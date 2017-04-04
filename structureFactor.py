@@ -105,9 +105,7 @@ def call_norm_cu(N, sk, kmax, kbin, normk, gpu=1):
     
 
 s = time.time()
-#C = norm_sq(N, sk,kmax=kmax, kbin=kbin, normk=normk)
 C, D, E = call_norm_cu(N, sk, kmax, kbin, normk)
-#C *= rho_bins
 print("Normalize to S(q)", time.time()-s)
 o = open('%s.txt' % (mode), 'w')
 if mode == 'XRD':
