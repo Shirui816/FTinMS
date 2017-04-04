@@ -15,7 +15,7 @@ N = 100*zp
 Ndiv = 2*N+1 # fineness of a delta function, usually 0.1 is fine: box * zp / Ndiv ~ 0.1
 origin = 'corner' # 'corner' by default or 'center'
 box = np.array([0, 0, 0]) # Angstrom. 0 then box is taken as the r_max - r_min of sample coordinates.
-mode = 'STRF' # or 'STRF' for structural factor
+mode = 'STRF' # 'XRD' for xrd 'STRF' for structure factor
 
 print("-----------------------------------------------")
 print("Origin is at %s" % (origin))
