@@ -6,13 +6,13 @@ from sys import argv
 import time
 import accelerate.cuda as acc
 cufft = acc.fft.fft
+gpu = 1
 
-
-zp = 1 # Zero-padding
+zero_padding = 1 # Zero-padding
 _lambda = 1.5 # In Angstrom.
-kmax = 100*zp
-N = 100*zp
-Ndiv = 2*N+1 # fineness of a delta function, usually 0.1 is fine: box * zp / Ndiv ~ 0.1
+kmax = 100 * zero_padding
+N = 100 * zero_padding
+Ndiv = 2 * N + 1 # fineness of a delta function, usually 0.1 is fine: box * zero_padding / Ndiv ~ 0.1
 origin = 'corner' # 'corner' by default or 'center'
 box = np.array([0, 0, 0]) # Angstrom. 0 then box is taken as the r_max - r_min of sample coordinates.
 mode = 'STRF' # 'XRD' for xrd 'STRF' for structure factor
@@ -48,19 +48,19 @@ if box.dot(box) == 0:
     box = np.array([xM-xm, yM-ym, zM-zm])
 if origin == 'corner':
     POS -= box/2
-box *= zp
+box *= zero_padding
 Lx, Ly, Lz = box[0], box[1], box[2]
-rho_bins = Ndiv**3/Lx/Ly/Lz
-print(rho_bins)
+rho_bins = Ndiv ** 3 / Lx / Ly / Lz
 # binning and histogramming
 s = time.time()
 f, edges = np.histogramdd(POS, bins=(Ndiv, Ndiv, Ndiv), weights=W, range=((-Lx/2, Lx/2), (-Ly/2, Ly/2), (-Lz/2,Lz/2)))# $Z(\bm{r})\rho(\bm{r})$
 F = fftshift(f).astype(np.complex64) # For cufft_C2C, for systems that 0 at box center, this shift makes 0 at corner. But is there any difference between shift/noshift arrays?
 print("Binning partiles", time.time()-s)
 s = time.time()
-#ftk = fftshift(fftn(fftshift(f))) # steric integration of exp(r)DiracDelta(r) form, shift zero-feq value to center.
+#ftk = fftshift(fftn(fftshift(f))) # steric integration of exp(r)DiracDelta(r) form, shift zero-feq value to center. CPU VER
 cuftk = np.empty(F.shape).astype(np.complex64)
-cufft(F, cuftk)
+with cuda.gpus[gpu]:
+    cufft(F, cuftk)
 ftk = fftshift(cuftk)
 sk = np.abs(ftk)**2 / float(Natoms) # $\frac{1}{N}\rho(\bm{k})\rho(-\bm{k})$
 print("FFT and S(k)", time.time()-s)
@@ -95,17 +95,17 @@ def call_norm_cu(N, sk, kmax, kbin, normk, gpu=1):
     E = np.zeros((Nbins,)).astype(np.uint32)
     SK = sk.astype(np.float32)
     NORMK = normk.astype(np.float32)
-    cuda.select_device(gpu)
-    device = cuda.get_current_device()
-    tpb = device.WARP_SIZE
-    bpg = int(np.ceil(float(Ndiv)/tpb))
-    norm_sq_cu[bpg, tpb](Ndiv, SK, kmax, kbin, NORMK, C, D, E)
+    with cuda.gpus[gpu]:
+        device = cuda.get_current_device()
+        tpb = device.WARP_SIZE
+        bpg = int(np.ceil(float(Ndiv)/tpb))
+        norm_sq_cu[bpg, tpb](Ndiv, SK, kmax, kbin, NORMK, C, D, E)
     E[E==0]=1
     return C/E, D/E*kbin, E # C is SQ, D is Q and E is the counter
     
 
 s = time.time()
-C, D, E = call_norm_cu(N, sk, kmax, kbin, normk)
+C, D, E = call_norm_cu(N, sk, kmax, kbin, normk, gpu=gpu)
 print("Normalize to S(q)", time.time()-s)
 o = open('%s.txt' % (mode), 'w')
 if mode == 'XRD':
