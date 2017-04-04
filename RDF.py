@@ -1,7 +1,6 @@
 from sys import argv
 import pandas as pd
 import numpy as np
-import time
 import accelerate as acc
 fn = argv[1]
 print('Box origin must be at the center!')
@@ -11,17 +10,11 @@ Ndim = 500 # Finess of delta function
 V = box[0]*box[1]*box[2]
 rho_bins = Ndim**3/V # Number density of bins
 rho = pos.shape[0]/V
-s = time.time()
 p, e = np.histogramdd(pos, bins=(Ndim, Ndim, Ndim), range=((-box[0]/2, box[0]/2), (-box[1]/2, box[1]/2),(-box[2]/2, box[2]/2)))
-print('Binning particles: %s' % (time.time()-s))
 p = np.fft.fftshift(p) # POS is of center-origin, here move origin to cornor.
-s = time.time()
-fp = acc.mkl.fftpack.fftn(p) # Accelerate package
-print('FFT time: %s' % (time.time()-s))
+fp = acc.mkl.fftpack.fftn(p) # Accelerate package, strange, np.fft is actually faster than acc.mkl.fftpack.fft for N-dimensional ffts
 FP = fp*fp.conj()
-s = time.time()
 RDF = np.fft.ifftn(FP).real # IFFT{<rho(K)rho(-K)>}, 1/N\sum_i......(see numpy.fft, so rho_bins is needed)
-print('IFFT time: %s' % (time.time()-s))
 RDF[0,0,0] -= pos.shape[0]
 RDF = np.fft.fftshift(RDF)
 rbin = 0.2 # histogram for g(\bm{r}) to g(r)
