@@ -16,7 +16,7 @@ Ndiv = 2 * N + 1 # fineness of a delta function, usually 0.1 is fine: box * zero
 origin = 'corner' # 'corner' by default or 'center'
 
 '''
-This `center or corner` option is not necessary for we just care about FT{rho}FT{rho}.conj() which is
+This `center or corner` option is not necessary for that we just care about FT{rho}FT{rho}.conj() which is
 abs(FT{rho})**2, but FT{f(x-a)} = exp(-2pi*i*k*a)FT{f(x)}, therefor the abs(FT{f}) is under translation
 invariance. Moving particles to make box center be origin is just for easy-debugging.
 '''
