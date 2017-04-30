@@ -18,7 +18,7 @@ origin = 'corner' # 'corner' by default or 'center'
 '''
 This `center or corner` option is not necessary for that we just care about FT{rho}FT{rho}.conj() which is
 abs(FT{rho})**2, due to that FT{f(x-a)} = exp(-2pi*i*k*a)FT{f(x)}, therefor the abs(FT{f}) is under translation
-invariance (FOR REAL-VALUED FUNCTIONS!!!). Moving particles to make box center be origin is just for easy-debugging.
+invariance (FOR a IS REAL!!!). Moving particles to make box center be origin is just for easy-debugging.
 '''
 
 box = np.array([0, 0, 0]) # Angstrom. 0 then box is taken as the r_max - r_min of sample coordinates.
