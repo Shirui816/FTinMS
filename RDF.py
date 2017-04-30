@@ -4,6 +4,7 @@ import numpy as np
 import accelerate as acc
 fn = argv[1]
 print('Box origin must be at the center!')
+# This `centerage` is necessary for r matrix
 pos = pd.read_csv(fn, delim_whitespace=True, squeeze=1, header=None).values
 
 Ndim = 500 # Finess of delta function
