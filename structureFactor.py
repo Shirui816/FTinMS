@@ -17,7 +17,7 @@ origin = 'corner' # 'corner' by default or 'center'
 
 '''
 This `center or corner` option is not necessary for that we just care about FT{rho}FT{rho}.conj() which is
-abs(FT{rho})**2, but FT{f(x-a)} = exp(-2pi*i*k*a)FT{f(x)}, therefor the abs(FT{f}) is under translation
+abs(FT{rho})**2, due to that FT{f(x-a)} = exp(-2pi*i*k*a)FT{f(x)}, therefor the abs(FT{f}) is under translation
 invariance (FOR REAL-VALUED FUNCTIONS!!!). Moving particles to make box center be origin is just for easy-debugging.
 '''
 
