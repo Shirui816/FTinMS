@@ -14,6 +14,13 @@ kmax = 100 * zero_padding
 N = 100 * zero_padding
 Ndiv = 2 * N + 1 # fineness of a delta function, usually 0.1 is fine: box * zero_padding / Ndiv ~ 0.1
 origin = 'corner' # 'corner' by default or 'center'
+
+'''
+This `center or corner` option is not necessary for we just care about FT{rho}FT{rho}.conj() which is
+abs(FT{rho})**2, but FT{f(x-a)} = exp(-2pi*i*k*a)FT{f(x)}, therefor the abs(FT{f}) is under translation
+invariance. Moving particles to make box center be origin is just for easy-debugging.
+'''
+
 box = np.array([0, 0, 0]) # Angstrom. 0 then box is taken as the r_max - r_min of sample coordinates.
 mode = 'STRF' # 'XRD' for xrd 'STRF' for structure factor
 
