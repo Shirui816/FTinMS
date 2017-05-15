@@ -16,7 +16,7 @@ p = np.fft.fftshift(p) # POS is of center-origin, here move origin to cornor.
 fp = acc.mkl.fftpack.fftn(p) # Accelerate package, strange, np.fft is actually faster than acc.mkl.fftpack.fft for N-dimensional ffts
 FP = fp*fp.conj()
 RDF = np.fft.ifftn(FP).real # IFFT{<rho(K)rho(-K)>}, 1/N\sum_i......(see numpy.fft, so rho_bins is needed)
-RDF[0,0,0] -= pos.shape[0]
+RDF[0,0,0] -= pos.shape[0] # g(\bm{r}) = IFFT{<rho(K)rho(-K)>} - N\delta(\bm{r}) for gAA cases.
 RDF = np.fft.fftshift(RDF)
 rbin = 0.2 # histogram for g(\bm{r}) to g(r)
 rx = e[0][:Ndim] + 0.5*(e[0][-1]-e[0][-2])
