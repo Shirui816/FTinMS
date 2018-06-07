@@ -20,6 +20,7 @@ factors = 1/chain_length *\
 for f in argv[1:]:
     print(f)
     xml = hoomd_xml(f, needed=['position', 'image'])
+    # remove 208*250 other molecules in the system
     pos = xml.nodes['position'][250*208:]+xml.box*xml.nodes['image'][250*208:]
     pos = pos.reshape(-1, chain_length, 3)
     normalModes = np.swapaxes(np.tensordot(factors, pos, axes=[1, 1]), 0, 1)
