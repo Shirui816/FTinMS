@@ -9,13 +9,12 @@ pos = pd.read_csv(fn, delim_whitespace=True, squeeze=1, header=None).values
 
 Ndim = 500 # Finess of delta function
 V = box[0]*box[1]*box[2]
-rho_bins = Ndim**3/V # Number density of bins
 rho = pos.shape[0]/V
 p, e = np.histogramdd(pos, bins=(Ndim, Ndim, Ndim), range=((-box[0]/2, box[0]/2), (-box[1]/2, box[1]/2),(-box[2]/2, box[2]/2)))
 p = np.fft.fftshift(p) # POS is of center-origin, here move origin to cornor.
 fp = acc.mkl.fftpack.fftn(p) # Accelerate package, strange, np.fft is actually faster than acc.mkl.fftpack.fft for N-dimensional ffts
 FP = fp*fp.conj()
-RDF = np.fft.ifftn(FP).real # IFFT{<rho(K)rho(-K)>}, 1/N\sum_i......(see numpy.fft, so rho_bins is needed)
+RDF = np.fft.ifftn(FP).real # IFFT{<rho(K)rho(-K)>}, 1/N\sum_i......(see numpy.fft, so N_bins is needed)
 RDF[0,0,0] -= pos.shape[0] # g(\bm{r}) = IFFT{<rho(K)rho(-K)>} - N\delta(\bm{r}) for gAA cases.
 RDF = np.fft.fftshift(RDF)
 rbin = 0.2 # histogram for g(\bm{r}) to g(r)
@@ -39,8 +38,8 @@ def norm_r(RDF, rbin, rx, ry, rz):
 
 
 rdf = norm_r(RDF, rbin, rx,ry,rz)
-rdf /= pos.shape[0] * rho # NA*NB/V for gAB(r)
-rdf *= rho_bins # NORMED BY BIN DENSITY
+rdf /= pos.shape[0] * rho / V # NA*NB/V^2 for gAB(r)
+rdf *= Ndim**3 # 1/N problem induced by FFT
 rr = np.arange(rdf.shape[0])*rbin
 
 o = open('rdf.txt', 'w')
