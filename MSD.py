@@ -7,7 +7,7 @@ from simpletraj.dcd.dcd import DCDReader
 # $g(m)=\frac{1}{N-m}\sum_{k=0}^{N-m-1}(r(k+m)^2+r(k)^2-2r(k+m)r(k))
 # For $\frac{1}{N-m}\sum_{k=0}^{N-m-1}(r(k+m)r(k))=C_r(m)$ and $C_r(t)$ is
 # the autocorrelation function of $r(t)$, by Convolution theorem, the auto-
-# correlation part can be calculated by FFT algorithm.
+# -correlation part can be calculated by FFT algorithm.
 # For the Square part $SQ(m):=\sum_{k=0}^{N-m-1}(r(k+m)^2+r(k)^2)$, one can
 # calculate for every $m$ via a recursive relation:
 # $SQ(m-1)-SQ(m)=r(m-1)^2+r(N-m)^2$
