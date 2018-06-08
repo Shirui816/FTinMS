@@ -13,9 +13,9 @@ p, e = np.histogramdd(pos, bins=(Ndim, Ndim, Ndim),
                       (-box[2]/2, box[2]/2)))
 fp = np.fft.rfftn(p)
 # rfft for efficiency.
-# Accelerate package, strange,
+# anaconda.accelerate package is strange,
 # np.fft is actually faster than accelerate.mkl.fftpack.fft
-# for N-dimensional ffts in anaconda
+# for N-dimensional ffts....
 FP = fp*fp.conj()
 RDF = np.fft.irfftn(FP).real
 # IFFT{<rho(K)rho(-K)>}, 1/N\sum_i......(see numpy.fft, so N_bins is needed)
