@@ -52,6 +52,6 @@ if dcd.periodic:
     print("Error, Periodic data found!")
     sys.exit(1)
 allX = np.asarray([np.copy(_) for _ in dcd])
-# Or read by chunk, cumulate every chunk then average by particles
+# Or read by chunk, cumulate every chunk then average by n_particles
 msd = (msd_Square(allX) - 2 * msd_Correlation(allX))/allX.shape[1]
 np.savetxt('msd.txt', np.vstack([np.arange(msd.shape[0]), msd]).T, fmt='%.6f')
