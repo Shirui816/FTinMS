@@ -31,7 +31,8 @@ def msd_Correlation(allX):
     # then sum fx, fy, fz...fndim
     # rfft for real inpus, higher eff
     return np.sum(np.fft.irfft(corr, axis=0)[:M].real,
-                  axis=1)/np.arange(M, 0, -1)  # (n_frames, n_particles)
+                  axis=1)/np.arange(M, 0, -1)
+    # (n_frames,), the n_particles dimension is added out
 
 
 def msd_Square(allX):
