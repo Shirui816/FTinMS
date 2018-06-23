@@ -51,5 +51,5 @@ rr = np.arange(rdf.shape[0])*rbin
 
 o = open('rdf.txt', 'w')
 for i, y in enumerate(rdf):
-    o.write('%.8f %.8f\n' % ((i+0.5) * rbin, y))
+    o.write('%.8f %.8f\n' % ((i + 0.5) * rbin, y))
 o.close()
