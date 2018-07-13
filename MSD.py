@@ -43,7 +43,7 @@ def msd_Square(allX):
     SS = 2 * S.sum()
     SQ = np.zeros(M)
     for m in range(M):
-        SS = SS - SS[m - 1] - SS[M - m]
+        SS = SS - S[m - 1] - S[M - m]
         SQ[m] = SS / (M - m)
     return SQ
 
