@@ -29,7 +29,7 @@ def msd_Correlation(allX):
     # fx = fft(_.T[0]), fy =... for _ in
     # allX.swapaxes(0,1) -> (n_particles, n_frames, n_dim)
     # then sum fx, fy, fz...fndim
-    # rfft for real inpus, higher eff
+    # rfft for real inputs, higher eff
     return np.sum(np.fft.irfft(corr, axis=0)[:M].real,
                   axis=1)/np.arange(M, 0, -1)
     # (n_frames,), the n_particles dimension is added out
