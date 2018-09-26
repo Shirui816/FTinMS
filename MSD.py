@@ -38,7 +38,7 @@ def msd_Correlation(allX):
 def msd_Square(allX):
     """Square part of MSD."""
     M = allX.shape[0]  # n_frame, n_particle, n_dim
-    S = np.square(allX).sum(axis=1).sum(axis=-1)
+    S = np.square(allX).sum(axis=(1,-1))
     S = np.append(S, 0)  # for SS[-1] == SS[M] == 0
     SS = 2 * S.sum()
     SQ = np.zeros(M)
