@@ -52,7 +52,7 @@ def pbc_pairwise_distance(X, Y, box, res):
 
 # Variables
 box = np.array([50.0, 50.0, 50.0], dtype=np.float)  # Modify box here.
-minCLS = 10  # clusters that are smaller than `minCLS' will be ignored.
+minCls = 10  # clusters that are smaller than `minCLS' will be ignored.
 epsilon = 1.06
 minPts = 5
 # Optimized for DPD, RTFM for these 2 parameters pls.
@@ -102,7 +102,7 @@ o = open('cluster_meta.txt', 'w')
 # modify following codes if 2-D outputs are desired:
 fmt = '%04d %d %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n'
 for i, cluster in enumerate(clusters):
-    if cluster.shape[0] < minCLS:
+    if cluster.shape[0] < minCls:
         continue
     p = cluster
     p_pbc = pbc(p-mid(p, 10000, box), box)
