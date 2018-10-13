@@ -93,9 +93,14 @@ noises = pos[db_fitted.labels_ == -1]
 
 # Output is for 3-D cases
 # cluster_meta.txt contains meta info of clusters:
+# cluster id, number of particles in the cluster and eigen values and
+# corresponding eigen vectors are given for each cluster. Cluster
+# positions are pbc-unwrapped and COM-zeroed.
+# cluster_meta.txt:
 # <cls_id> <n_pars> <eig_1> <eig_2> <eig_3> <v_1(xyz)> <v_2(xyz)> <v_3(xyz)>
-# xyz file (cls_id.xyz) contains
-# center-zeroed and pbc-unwrapped cluster coordinates
+# cls_id.xyz:
+# xyz file (cls_id.xyz) contains.
+# center-zeroed and pbc-unwrapped cluster coordinates.
 
 o = open('cluster_meta.txt', 'w')
 # modify following codes if 2-D outputs are desired:
