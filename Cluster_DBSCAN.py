@@ -6,8 +6,9 @@ from sys import argv
 from math import floor, sqrt, ceil
 from sklearn.cluster import DBSCAN
 
-# For usage of cuda.jit, run `conda install cudatoolkit=8.0` after the
-# installation of Anaconda env.
+# For usage of cuda.jit, run `conda install cudatoolkit=9.0` after the
+# installation of Anaconda env. numba.cuda cannot compile under
+# latest `cudatoolkit=9.2' currently.
 
 
 def pbc(p, d):
