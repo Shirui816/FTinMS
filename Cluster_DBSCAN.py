@@ -52,7 +52,11 @@ def pbc_pairwise_distance(X, Y, box, res):
 
 # Variables
 box = np.array([50.0, 50.0, 50.0], dtype=np.float)  # Modify box here.
-minCLS = 10  # clusters that are smaller than `minCLS' will be ignored
+minCLS = 10  # clusters that are smaller than `minCLS' will be ignored.
+epsilon = 1.06
+minPts = 5
+# Optimized for DPD, RTFM for these 2 parameters pls.
+
 # Usage: python <this_file> <position_file>
 # <position_file> should only contain positions:
 # x0 y0 z0
@@ -72,10 +76,7 @@ bpg2d = (ceil(pos.shape[0]/tpb2d[0]), ceil(pos.shape[0]/tpb2d[1]))
 s = time.time()
 pbc_pairwise_distance[bpg2d, tpb2d](pos, pos, box, ret)
 db_fitted = DBSCAN(metric='precomputed',
-                   n_jobs=-1, eps=2, min_samples=10).fit(ret)
-# eps for radius of high density zones, min_samples defines minimum of number
-# of points that defines a high density zone,
-# read wikipedia for more infomations.
+                   n_jobs=-1, eps=epsilon, min_samples=minPts).fit(ret)
 print('%.4f secs.' % (time.time()-s))
 
 # Relatively slow, however no RAM limits.
@@ -83,7 +84,7 @@ print('%.4f secs.' % (time.time()-s))
 # or define a pbc metric function, cython is recommanded.
 # s = time.time()
 # db_fitted = DBSCAN(metric=cpbc, metric_params={'box':box},
-#                    n_jobs=-1, eps=1.2, min_samples=10).fit(pos)
+#                    n_jobs=-1, eps=epsilon, min_samples=minPts).fit(pos)
 # sklearn version >= 0.19
 # print('%.4f secs.' % (time.time()-s))
 
