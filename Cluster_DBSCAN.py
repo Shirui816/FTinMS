@@ -93,7 +93,7 @@ noises = pos[db_fitted.labels_ == -1]
 
 # Output is for 3-D cases
 # cluster_meta.txt contains meta info of clusters:
-# cluster id, number of particles in the cluster and eigen values and
+# cluster id, number of particles in the cluster, eigen values and
 # corresponding eigen vectors are given for each cluster. Cluster
 # positions are pbc-unwrapped and COM-zeroed.
 # cluster_meta.txt:
