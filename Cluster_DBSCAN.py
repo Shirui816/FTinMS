@@ -106,9 +106,6 @@ for i, cluster in enumerate(clusters):
         continue
     p = cluster
     p_pbc = pbc(p-mid(p, 10000, box), box)
-    # p_pbc = np.cumsum(np.append(np.zeros((1, p.shape[-1])),
-    #                   pbc(np.diff(p ,axis=0), box), axis=0), axis=0)
-    # simple algorithm will not work properly for large aggrs
     p_pbc -= np.mean(p_pbc, axis=0)
     rgTensor = p_pbc.T.dot(p_pbc)/p_pbc.shape[0]
     e, v = np.linalg.eig(rgTensor)
