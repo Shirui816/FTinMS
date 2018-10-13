@@ -20,8 +20,7 @@ def mid(pos, n, box):
     for i in range(box.shape[0]):
         y, _ = np.histogram(pos.T[i], bins=n, range=(-box[i]/2, box[i]/2))
         y = (y > 0).astype(np.float)
-        F = w.dot(y).conj()
-        a = np.angle(F)
+        a = np.angle(w.dot(y).conj())
         a += 2 * np.pi if a < 0 else 0
         # box_min + box_length * a / 2 / np.pi
         ret.append(-box[i]/2 + box[i] * a/2/np.pi)
