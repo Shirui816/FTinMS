@@ -16,6 +16,11 @@ def pbc(p, d):
 
 
 def mid(pos, n, box):
+    r'''Same as circular mean. \sum_i\sin(\alpha_i)->
+    \sum_ig_i\sin(\alpha_{g_i}) for \alpha_{g_i} is angle
+    in the bin of \alpha_{g_i}+\delta\alpha and g_i is the
+    count of angles in this bin.
+    '''
     ret = []
     w = np.exp(-2j*np.pi*np.arange(n) / n)
     for i in range(box.shape[0]):
