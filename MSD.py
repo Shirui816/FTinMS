@@ -24,21 +24,20 @@ def msd_Correlation(allX):
     # (n_frams, n_particles, n_dim) -> (n_frames_Ft, n_particles, n_dim)
     allFX = np.fft.rfft(allX, axis=0, n=M*2)
     # sum over n_dim axis
-    corr = np.sum(abs(allFX)**2, axis=-1)  # (n_frames_ft, n_particles)
+    corr = np.sum(abs(allFX)**2, axis=(1, -1))  # (n_frames_ft,)
     # IFT over n_frame_ft axis (axis=0), whole operation euqals to
     # fx = fft(_.T[0]), fy =... for _ in
     # allX.swapaxes(0,1) -> (n_particles, n_frames, n_dim)
     # then sum fx, fy, fz...fndim
     # rfft for real inputs, higher eff
-    return np.sum(np.fft.irfft(corr, axis=0)[:M].real,
-                  axis=1)/np.arange(M, 0, -1)
+    return np.fft.irfft(corr)[:M].real/np.arange(M, 0, -1)
     # (n_frames,), the n_particles dimension is added out
 
 
 def msd_Square(allX):
     """Square part of MSD."""
     M = allX.shape[0]  # n_frame, n_particle, n_dim
-    S = np.square(allX).sum(axis=(1,-1))
+    S = np.square(allX).sum(axis=(1, -1))
     S = np.append(S, 0)  # for SS[-1] == SS[M] == 0
     SS = 2 * S.sum()
     SQ = np.zeros(M)
