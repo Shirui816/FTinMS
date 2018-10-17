@@ -25,7 +25,7 @@ def mid(pos, n, box):
     w = np.exp(-2j*np.pi*np.arange(n) / n)
     for i in range(box.shape[0]):
         y, _ = np.histogram(pos.T[i], bins=n, range=(-box[i]/2, box[i]/2))
-        if not np.all(y>0):  # com if procolate, else median
+        if not np.all(y > 0):  # com if procolate, else median
             y = (y > 0).astype(np.float)  # no weight for median
         a = np.angle((w.dot(y)).conj()) % (2 * np.pi)
         # box.lo + a/2/np.pi * (box.hi-box.lo)
