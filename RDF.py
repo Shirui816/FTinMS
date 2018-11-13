@@ -17,7 +17,7 @@ fp = np.fft.rfftn(p)
 # np.fft is actually faster than accelerate.mkl.fftpack.fft
 # for N-dimensional ffts....
 FP = fp*fp.conj()
-RDF = np.fft.irfftn(FP).real
+RDF = np.fft.irfftn(FP, FP.shape).real
 # IFFT{<rho(K)rho(-K)>}, 1/N\sum_i......(see numpy.fft, so N_bins is needed)
 RDF[0, 0, 0] -= pos.shape[0]
 # g(\bm{r}) = IFFT{<rho(K)rho(-K)>} - N\delta(\bm{r}) for gAA cases.
