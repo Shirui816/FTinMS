@@ -35,11 +35,12 @@ def batchRgTensor(samples, boxes):
     # same if the samples were given as (n_frames, n_chains, n_monomers, n_dimension)
     # boxes is (n_frames, n_dimension) and must be expand to (n_frames, 1, 1, n_dimension)
     # so that for all chains in same frame has same box lengths.
-    
-    if boxes.ndim != 1 and samples.ndim <= 3:
-        raise ValueError("NO~~~")
-    if boxes.ndim < samples.ndim:
+    if samples.ndim <= 3: # (n_chains, n_monomers, n_dimensions), samples.ndim>3 means at least there was frame info
+        raise ValueError("NO~~~Are you using multiple box values for 1 frame data?")
+    else:
         boxes = np.expand_dims(np.expand_dims(boxes, -2), -3)
+	# boxes' dimension is always lower than samples by 2 (n_chains, n_monomers)
+	# e.g., (10, 3) for 10 frames (10, n_chains, n_monomers, 3) for sample
     chain_length = samples.shape[-2]
     samples = pbc(np.diff(samples, axis=-2), boxes).cumsum(axis=-2) # samples -> (..., n_chains, n-1 monomers, n_dim)
     com = np.expand_dims(samples.sum(axis=-2)/chain_length, -2) # com -> (..., n_chains, 1, n_dim)
