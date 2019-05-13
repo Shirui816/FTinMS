@@ -17,7 +17,7 @@ def batch_dot(a, b, ret):  # much more faster than np.tensordot or np.einsum
             tmp = 0.
             for k in range(a.shape[1]):
                 tmp += a[i, k] * b[k, j]
-	ret[i, j] = tmp
+	    ret[i, j] = tmp
 
 def pbc(r, d):
     return r - d * np.round(r/d)
