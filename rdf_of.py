@@ -21,7 +21,7 @@ def cu_cell_id(p, box, ibox):  # In the Fortran way
     # unravel in Fortran way.
 
 
-@cuda.jit("void(float64[:, :], float64[:], int64[:], int64[:]")
+@cuda.jit("void(float64[:, :], float64[:], int64[:], int64[:])")
 def cu_cell_ind(pos, box, ibox, ret):
     i = cuda.grid(1)
     if i < pos.shape[0]:
@@ -57,12 +57,10 @@ def ravel_index_f_cu(i, dim):  # ravel index in Fortran way.
     return ret
 
 
-def cell_count(cell_id):
-    r"""
-    :param cell_id: must be sorted.
-    :return: cumsum of count of particles in cells.
-    """
-    return np.append(0, np.cumsum(np.bincount(cell_id, minlength=cell_id.max() + 1)))
+@cuda.jit("void(int64[:], int64[:])", device=True)
+def _add_local_arr_mois_1(a, b):
+    for i in range(a.shape[0]):
+        a[i] = a[i] + b[i] - 1
 
 
 @cuda.jit("void(int64[:], int64[:])")
@@ -75,6 +73,7 @@ def cu_cell_count(cell_id, ret):
 
 def cu_cell_list(pos, box, ibox, gpu=0):
     n = pos.shape[0]
+    n_cell = np.multiply.reduce(ibox)
     cell_id = np.zeros(n).astype(np.int64)
     with cuda.gpus[gpu]:
         device = cuda.get_current_device()
@@ -83,17 +82,13 @@ def cu_cell_list(pos, box, ibox, gpu=0):
         cu_cell_ind[bpg, tpb](pos, box, ibox, cell_id)
     cell_list = np.argsort(cell_id)  # pyculib radixsort for cuda acceleration.
     cell_id = cell_id[cell_list]
-    cell_counts = np.r_[
-        0, np.diff(
-            np.flatnonzero(np.diff(cell_id)) + 1, prepend=0, append=cell_id.shape[0]
-        ).cumsum()
-    ]
+    cell_counts = np.r_[0, np.cumsum(np.bincount(cell_id, minlength=n_cell + 1))]
     return cell_list.astype(np.int64), cell_counts.astype(np.int64)
 
 
 @cuda.jit(
-    "void(float64[:,:],float64[:,:],float64[:],int64[:],float64[:],"
-    "float64[:],float64,float64,int64[:],int64[:],int64[:,:],int64[:]"
+    "void(float64[:,:],float64[:,:],float64[:],int64[:],float64[:],float64[:],"
+    "float64,float64,int64[:],int64[:],int64[:,:],int64[:])"
 )
 def rdf_of_ab(a, b, box, ibox, da, db, bs, rc, cl, cc, ret, dim):
     r"""
@@ -116,12 +111,12 @@ def rdf_of_ab(a, b, box, ibox, da, db, bs, rc, cl, cc, ret, dim):
     if i >= a.shape[0]:
         return
     cell_i = cu_cell_id(a[i], box, ibox)  # a[i] in which cell
-    cell_vec_i = cuda.local.array(a.shape[1], nb.int64)  # unravel the cell id
+    cell_vec_i = cuda.local.array(3, nb.int64)  # unravel the cell id
     unravel_index_f_cu(cell_i, ibox, cell_vec_i)  # unravel the cell id
-    cell_vec_j = cuda.local.array(a.shape[1], nb.int64)
+    cell_vec_j = cuda.local.array(3, nb.int64)
     for j in range(a.shape[1] ** 3):
         unravel_index_f_cu(j, dim, cell_vec_j)  # -1, -1, -1 to +1, +1, +1
-        cell_vec_j = cell_vec_i + cell_vec_j - 1
+        _add_local_arr_mois_1(cell_vec_j, cell_vec_i)
         cell_j = ravel_index_f_cu(cell_vec_j, ibox)  # ravel cell id vector to cell id
         start = cc[cell_j]  # start pid in the cell_j th cell
         end = cc[cell_j + 1]  # end pid in the cell_j th cell
@@ -150,6 +145,8 @@ if __name__ == "__main__":
         _tpb = _device.WARP_SIZE
         _bpg = ceil(_a.shape[0] / _tpb)
         rdf_of_ab[_bpg, _tpb](_a, _b, _box, _ibox, _da, _db, _bs, _rc, _cl, _cc, _ret, _dim)
-    _r = (np.arange(_ret.shape[0] + 1) + 0.5) * _bs
+    _rho_b = _b.shape[0] / np.multiply.reduce(_box)
+    _r = (np.arange(_ret.shape[1] + 1) + 0.5) * _bs
     _dV = 4 / 3 * np.pi * np.diff(_r ** 3)
-    _ret = _ret / _dV
+    _ret = _ret / np.expand_dims(_dV, 0) / _rho_b
+    np.savetxt('rdf.txt', np.vstack([_r[:-1], _ret.mean(axis=0)]).T, fmt='%.6f')
