@@ -104,7 +104,7 @@ def rdf_of_ab(a, b, box, da, db, bs, rc, gpu=0):
 
     @cuda.jit(
         "void(float64[:,:],float64[:,:],float64[:],int64[:],float64[:],"
-        "float64[:],float64,float64,int64[:],int64[:],int64[:,:], int64[:])"
+        "float64[:],float64,float64,int64[:],int64[:],int64[:,:],int64[:])"
     )
     def _rdf(_a, _b, _box, _ibox, _da, _db, _bs, _rc, _cl, _cc, _ret, _dim):
         r"""
