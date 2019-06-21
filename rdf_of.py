@@ -141,6 +141,7 @@ def rdf_of_ab(a, b, box, da, db, bs, rc, gpu=0):
                 dij = pbc_dist_cu(_a[i], _b[pid_k], _box) - (_da[i] + _db[pid_k]) / 2 + 1
                 if dij < rc:
                     cuda.atomic.add(_ret[i], int(dij / _bs), 1)
+
     with cuda.gpus[0]:
         device = cuda.get_current_device()
         tpb = device.WARP_SIZE
