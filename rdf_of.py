@@ -87,8 +87,8 @@ def cu_cell_list(pos, box, ibox, gpu=0):
 
 
 @cuda.jit(
-    "void(float64[:,:],float64[:,:],float64[:],int64[:],float64[:],float64[:],"
-    "float64,float64,int64[:],int64[:],int64[:,:],int64[:])"
+    "void(float64[:,:],float64[:,:],float64[:],int64[:],float64[:],"
+    "float64[:],float64,float64,int64[:],int64[:],int64[:,:],int64[:])"
 )
 def rdf_of_ab(a, b, box, ibox, da, db, bs, rc, cl, cc, ret, dim):
     r"""
