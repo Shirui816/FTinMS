@@ -10,10 +10,10 @@ import multiprocessing
 
 
 cdef long * unravel_index_f(long i, long[:] dim) nogil:
-    cdef long k, n
-    n = dim.shape[0]
-    cdef long * ret = <long *> malloc(n * sizeof(long))
-    for k in range(n):
+    cdef long k, d
+    d = dim.shape[0]
+    cdef long * ret = <long *> malloc(d * sizeof(long))
+    for k in range(d):
         ret[k] = i % dim[k]
         i = (i - ret[k]) / dim[k]
     return ret
@@ -67,25 +67,20 @@ cdef long cell_id(double[:] p, double[:] box, long[:] ibox) nogil:
     return ret
 
 
-def linked_cl(double[:, :] pos, double[:] box, long[:] ibox):
-    cdef np.ndarray[np.int64_t, ndim=1] head
-    cdef np.ndarray[np.int64_t, ndim=1] body
-    cdef long i, n
+cdef void linked_cl(double[:, :] pos, double[:] box, long[:] ibox, long[:] head, long[:] body) nogil:
+    cdef long i, n, ic
     n = pos.shape[0]
-    head = np.zeros(np.multiply.reduce(ibox), dtype=np.int64) - 1
-    body = np.zeros(pos.shape[0], dtype=np.int64) - 1
     for i in range(n):
         ic = cell_id(pos[i], box, ibox)
         body[i] = head[ic]
         head[ic] = i
-    return head, body
 
 
-def rdf(double[:,:] x, double[:,:] y, double[:] box, long[:] head, long[:] body, long[:] ibox, double bs, long nbins):
-    cdef long i, j, k, l, n, d3, d, ic, jc
+def rdf(double[:,:] x, double[:,:] y, double[:] box, double bs, long nbins):
+    cdef long i, j, k, l, n, m, d3, d, ic, jc
     cdef np.ndarray[np.double_t, ndim=2] ret
+    cdef long[:] head, body, ibox, dim
     cdef double r, r_cut
-    cdef long[:] dim
     cdef long ** j_vecs
     cdef long * veci
     cdef int num_threads, thread_num
@@ -93,7 +88,14 @@ def rdf(double[:,:] x, double[:,:] y, double[:] box, long[:] head, long[:] body,
     r_cut = nbins * bs
     n = x.shape[0]
     d = x.shape[1]
+    m = y.shape[0]
     d3 = 3 ** d
+    ibox = np.zeros((d,), dtype=np.int64)
+    for i in range(d):
+        ibox[i] = <long> floor(box[i] / r_cut + 0.5)
+    head = np.zeros(np.multiply.reduce(ibox), dtype=np.int64) - 1
+    body = np.zeros((m,), dtype=np.int64) - 1
+    linked_cl(y, box, ibox, head, body)
     ret = np.zeros((num_threads, nbins), dtype=np.float)
     dim = np.zeros((d,), dtype=np.int64) + 3
     j_vecs = <long **> malloc(sizeof(long *) * d3)
