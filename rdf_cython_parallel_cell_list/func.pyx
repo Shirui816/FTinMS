@@ -44,7 +44,6 @@ cdef long jth_neighbour(long * veci, long * vecj, long[:] dim) nogil:
     return ret
     
 
-@cython.cdivision(True)
 cdef double pbc_dist(double[:] x, double[:] y, double[:] b) nogil:
     cdef long i, d
     cdef double tmp=0, r=0
@@ -56,7 +55,6 @@ cdef double pbc_dist(double[:] x, double[:] y, double[:] b) nogil:
     return sqrt(r)
 
 
-@cython.cdivision(True)
 cdef long cell_id(double[:] p, double[:] box, long[:] ibox) nogil:
     # In the Fortran way
     cdef long ret, tmp, i, n
