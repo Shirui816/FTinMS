@@ -97,6 +97,7 @@ def rdf(double[:,:] x, double[:,:] y, double[:] box, double bs, long nbins):
     body = np.zeros((m,), dtype=np.int64) - 1
     linked_cl(y, box, ibox, head, body)
     ret = np.zeros((num_threads, nbins), dtype=np.float)
+    # or ret = (n, nbins) for each particles
     dim = np.zeros((d,), dtype=np.int64) + 3
     j_vecs = <long **> malloc(sizeof(long *) * d3)
     for i in range(d3):
