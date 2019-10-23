@@ -116,4 +116,6 @@ def rdf(double[:,:] x, double[:,:] y, double[:] box, double bs, long nbins):
                         l = <long> (r/bs)
                         ret[thread_num, l]+=1
                     k = body[k]
+            free(veci)
+    free(j_vecs)
     return np.sum(ret, axis=0)
