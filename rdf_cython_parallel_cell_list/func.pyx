@@ -32,7 +32,6 @@ cdef long ravel_index_f(long * vec, long[:] dim) nogil:
 
 cdef long jth_neighbour(long * veci, long * vecj, long[:] dim) nogil:
     cdef long ret, d, tmp, k
-    cdef long * tmpi
     d = dim.shape[0]
     ret = (veci[0] + vecj[0] - 1 + dim[0]) % dim[0]
     # re-ravel tmpi + tmpj - 1 to cell_j
@@ -103,7 +102,7 @@ def rdf(double[:,:] x, double[:,:] y, double[:] box, double bs, long nbins):
     for i in range(d3):
         j_vecs[i] = unravel_index_f(i, dim)  
     with nogil, parallel(num_threads=num_threads):
-        for i in prange(n, schedule='dynamic'):
+        for i in prange(n, schedule='static'):
             ic = cell_id(x[i], box, ibox)
             thread_num = openmp.omp_get_thread_num()
             veci = unravel_index_f(ic, ibox)
