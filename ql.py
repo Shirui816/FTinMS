@@ -111,9 +111,9 @@ def cu_cell_list(pos, box, ibox, gpu=0):
     n_cell = np.multiply.reduce(ibox)
     cell_id = np.zeros(n).astype(np.int64)
     with cuda.gpus[gpu]:
-        device = cuda.get_current_device()
-        tpb = device.WARP_SIZE
-        # tpb = 32
+        #device = cuda.get_current_device()
+        #tpb = device.WARP_SIZE
+        tpb = 32
         bpg = ceil(n / tpb)
         cu_cell_ind[bpg, tpb](pos, box, ibox, cell_id)
     cell_list = np.argsort(cell_id)  # pyculib radixsort for cuda acceleration.
@@ -128,12 +128,13 @@ def Ql(a, b, l, box, rc, gpu=0):
     ndim = a.shape[1]
     ibox = np.asarray(np.round(box / rc), dtype=np.int64)
     cl, cc = cu_cell_list(b, box, ibox, gpu=gpu)
+    _d = int(l * 2 + 1)
 
     @cuda.jit(
-        "void(float64[:,:],float64[:,:],float64[:],int64[:],"
-        "float64,int64[:],int64[:],float64[:],int64[:], int64)"
+        "void(float64[:,:],float64[:,:], float64[:],int64[:],"
+        "float64,int64[:],int64[:],float64[:],int64[:])"
     )
-    def _Ql(_a, _b, _box, _ibox, _rc, _cl, _cc, _ret, _dim, _l):
+    def _Ql(_a, _b, _box, _ibox, _rc, _cl, _cc, _ret, _dim):
         r"""
         :param _a: positions of a, (n_pa, n_d)
         :param _b: positions of b, (n_pb, n_d)
@@ -152,8 +153,8 @@ def Ql(a, b, l, box, rc, gpu=0):
         cell_vec_i = cuda.local.array(ndim, nb.int64)  # unravel the cell id
         unravel_index_f_cu(cell_i, _ibox, cell_vec_i)  # unravel the cell id
         cell_vec_j = cuda.local.array(ndim, nb.int64)
-        Qveci = cuda.local.array(2 * _l + 1, nb.complex128)
-        for _ in range(13):
+        Qveci = cuda.local.array(_d, nb.complex128)
+        for _ in range(_d):
             Qveci[_] = 0 + 0j
         nn = 0
         for j in range(_a.shape[1] ** 3):
@@ -176,27 +177,27 @@ def Ql(a, b, l, box, rc, gpu=0):
                 if 1e-5 < dr <= _rc:
                     phi = atan2(dy, dx) + pi
                     cosTheta = dz / dr
-                    for m in range(-_l, _l + 1):
-                        Qveci[m + _l] += sphHar(_l, m, cosTheta, phi)
+                    for m in range(-l, l + 1):
+                        Qveci[m + l] += sphHar(l, m, cosTheta, phi)
                     nn += 1.
         if nn == 0: nn = 1.
         resi = 0
-        for _ in range(2 * _l + 1):
+        for _ in range(_d):
             resi += abs(Qveci[_] / nn) ** 2
-        _ret[i] = sqrt(4 * pi / (2 * _l + 1) * resi)
+        _ret[i] = sqrt(4 * pi / (_d) * resi)
 
     with cuda.gpus[0]:
-        device = cuda.get_current_device()
-        tpb = device.WARP_SIZE
-        # tpb = 32
+        #device = cuda.get_current_device()
+        #tpb = device.WARP_SIZE
+        tpb = 32
         bpg = ceil(a.shape[0] / tpb)
         _Ql[bpg, tpb](
-            a, b, box, ibox, rc, cl, cc, ret, dim, l
+            a, b, box, ibox, rc, cl, cc, ret, dim
         )
     np.savetxt('q%d.txt' % (l), ret, fmt='%.6f')
     print(ret.mean())
     return ret
 
-a = np.loadtxt('1.txt')
+a = np.loadtxt('2.txt')
 box = np.array([100., 100, 100])
-Ql(a, a, l=6, box=box, rc=2.0, gpu=0)
+Ql(a, a, l=6, box=box, rc=1.02, gpu=0)
