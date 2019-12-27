@@ -9,6 +9,7 @@ __doc__ = """This program is just an example. $w$ and multiple $l$s are not supp
 PERIODIC BOUNDARY CONDITION (pbc) is always ON!!! I am planning to add a switch about this.
 """
 
+
 @cuda.jit("float64(int64, int64, float64)", device=True)
 def legendre(l, m, x):
     pmm = 1.0
@@ -111,9 +112,8 @@ def cu_cell_list(pos, box, ibox, gpu=0):
     n_cell = np.multiply.reduce(ibox)
     cell_id = np.zeros(n).astype(np.int64)
     with cuda.gpus[gpu]:
-        #device = cuda.get_current_device()
-        #tpb = device.WARP_SIZE
-        tpb = 32
+        device = cuda.get_current_device()
+        tpb = device.WARP_SIZE
         bpg = ceil(n / tpb)
         cu_cell_ind[bpg, tpb](pos, box, ibox, cell_id)
     cell_list = np.argsort(cell_id)  # pyculib radixsort for cuda acceleration.
@@ -187,9 +187,8 @@ def Ql(a, b, l, box, rc, gpu=0):
         _ret[i] = sqrt(4 * pi / (_d) * resi)
 
     with cuda.gpus[0]:
-        #device = cuda.get_current_device()
-        #tpb = device.WARP_SIZE
-        tpb = 32
+        device = cuda.get_current_device()
+        tpb = device.WARP_SIZE
         bpg = ceil(a.shape[0] / tpb)
         _Ql[bpg, tpb](
             a, b, box, ibox, rc, cl, cc, ret, dim
@@ -197,6 +196,7 @@ def Ql(a, b, l, box, rc, gpu=0):
     np.savetxt('q%d.txt' % (l), ret, fmt='%.6f')
     print(ret.mean())
     return ret
+
 
 a = np.loadtxt('2.txt')
 box = np.array([100., 100, 100])
