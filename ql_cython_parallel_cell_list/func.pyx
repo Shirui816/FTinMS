@@ -163,7 +163,7 @@ def ql(double[:,:] x, double[:,:] y, long[:] ls, double[:] box, double rc):
 					dr = sqrt(dx * dx  + dy * dy + dz * dz)
 					if 1e-5 < dr < rc:
 						count[i] += 1.0
-						#cosTheta = acos(dz / dr) # hand-made sph_harm
+						#cosTheta = dz / dr # hand-made sph_harm
 						#phi = atan2(dy, dx) + pi
 						cosTheta = atan2(dy, dx) + pi
 						phi = acos(dz/dr) # scipy sph_harm exp(-i \theta) sin(\phi)...
