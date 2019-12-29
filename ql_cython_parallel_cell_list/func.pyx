@@ -107,39 +107,105 @@ cdef long cell_id(double[:] p, double[:] box, long[:] ibox) nogil:
     return ret
 
 
-cdef void linked_cl(double[:, :] pos, double[:] box, long[:] ibox, long[:] head, long[:] body) nogil:
+cdef void linked_cl(double[:, :] pos, double[:] box, long[:] ibox, long[:] head, long[:] body, long[:] ct, long ncell) nogil:
     cdef long i, n, ic
     n = pos.shape[0]
     for i in range(n):
         ic = cell_id(pos[i], box, ibox)
         body[i] = head[ic]
         head[ic] = i
+        ct[ic] += 1
 
 
-def ql(double[:,:] x, double[:,:] y, long[:] ls, double[:] box, double rc):
-    cdef long i, j, k, l, n, m, d3, d, ic, jc, nl, ml, _m
-    cdef np.ndarray[np.complex128_t, ndim=3] ret
-    cdef np.ndarray[np.double_t, ndim=1] count
-    cdef long[:] head, body, ibox, dim
-    cdef double dr, dx, dy, dz, cosTheta, phi
+# def ql(double[:,:] x, double[:,:] y, long[:] ls, double[:] box, double rc):
+#     cdef long i, j, k, l, n, m, d3, d, ic, jc, nl, ml, _m
+#     cdef np.ndarray[np.complex128_t, ndim=3] ret
+#     cdef np.ndarray[np.double_t, ndim=1] count
+#     cdef long[:] head, body, ibox, dim
+#     cdef double dr, dx, dy, dz, cosTheta, phi
+#     cdef long ** j_vecs
+#     cdef long * veci
+#     cdef int num_threads, thread_num
+#     num_threads = multiprocessing.cpu_count()
+#     n = x.shape[0]
+#     d = x.shape[1]
+#     m = y.shape[0]
+#     nl = ls.shape[0]
+#     ml = 2 * max(ls) + 1
+#     d3 = 3 ** d
+#     ibox = np.zeros((d,), dtype=np.int64)
+#     for i in range(d):
+#         ibox[i] = <long> floor(box[i] / rc + 0.5)
+#     head = np.zeros(np.multiply.reduce(ibox), dtype=np.int64) - 1
+#     body = np.zeros((m,), dtype=np.int64) - 1
+#     linked_cl(y, box, ibox, head, body)
+#     ret = np.zeros((n, nl, ml), dtype=np.complex128)
+#     count = np.zeros((n,), dtype=np.float)
+#     # or ret = (n, nl) for each particles
+#     dim = np.zeros((d,), dtype=np.int64) + 3
+#     j_vecs = <long **> malloc(sizeof(long *) * d3)
+#     for i in range(d3):
+#         j_vecs[i] = unravel_index_f(i, dim)  
+#     with nogil, parallel(num_threads=num_threads):
+#         for i in prange(n, schedule='static'):
+#             ic = cell_id(x[i], box, ibox)
+#             thread_num = openmp.omp_get_thread_num()
+#             veci = unravel_index_f(ic, ibox)
+#             for j in range(d3):
+#                 jc = jth_neighbour(veci, j_vecs[j], ibox)
+#                 k = head[jc]
+#                 while k != -1:
+#                     dx = y[k, 0] - x[i, 0]
+#                     dy = y[k, 1] - x[i, 1]
+#                     dz = y[k, 2] - x[i, 2]
+#                     dx = dx - box[0] * floor(dx / box[0] + 0.5)
+#                     dy = dy - box[1] * floor(dy / box[1] + 0.5)
+#                     dz = dz - box[2] * floor(dy / box[2] + 0.5)
+#                     dr = sqrt(dx * dx  + dy * dy + dz * dz)
+#                     if 1e-5 < dr < rc:
+#                         count[i] += 1.0
+#                         #cosTheta = dz / dr # hand-made sph_harm
+#                         #phi = atan2(dy, dx) + pi
+#                         cosTheta = atan2(dy, dx) + pi
+#                         phi = acos(dz/dr) # scipy sph_harm exp(-i \theta) sin(\phi)...
+#                         for l in range(nl):
+#                             for _m in range(-ls[l], ls[l]+1):
+#                                 #ret[i, l, _m+ls[l]] += sphereHarmonics(ls[l], _m, cosTheta, phi)
+#                                 ret[i, l, _m+ls[l]] += sph_harm(_m, ls[l], cosTheta, phi)
+#                     k = body[k]
+#             free(veci)
+#     free(j_vecs)
+#     count[count < 1.0] = 1.0
+#     #return np.sqrt(4 * np.pi * np.sum(np.abs(ret) ** 2, axis=-1)/ (2 * ls + 1).reshape(1, -1))
+#     #return ret, count
+#     #return np.sqrt(4 * np.pi * np.sum(np.abs(ret/c[:,None,None]) ** 2, axis=-1)/ (2 * ls + 1).reshape(1, -1))
+#     return ret, count
+
+def neighbour_list(double[:,:] x, double[:] box, double rc):
+    cdef long i, j, k, l, n, m, d3, d, ic, jc, mc, ncell
+    cdef np.ndarray[np.int64_t, ndim=2] ret
+    cdef np.ndarray[np.int64_t, ndim=1] count
+    cdef long[:] head, body, ibox, dim, ct
+    cdef double dr, dx, dy, dz
     cdef long ** j_vecs
     cdef long * veci
     cdef int num_threads, thread_num
     num_threads = multiprocessing.cpu_count()
     n = x.shape[0]
     d = x.shape[1]
-    m = y.shape[0]
-    nl = ls.shape[0]
-    ml = 2 * max(ls) + 1
     d3 = 3 ** d
+    ncell = 1
     ibox = np.zeros((d,), dtype=np.int64)
     for i in range(d):
         ibox[i] = <long> floor(box[i] / rc + 0.5)
+        ncell *= ibox[i]
     head = np.zeros(np.multiply.reduce(ibox), dtype=np.int64) - 1
-    body = np.zeros((m,), dtype=np.int64) - 1
-    linked_cl(y, box, ibox, head, body)
-    ret = np.zeros((n, nl, ml), dtype=np.complex128)
-    count = np.zeros((n,), dtype=np.float)
+    body = np.zeros((n,), dtype=np.int64) - 1
+    ct = np.zeros((ncell,), dtype=np.int64)
+    linked_cl(x, box, ibox, head, body, ct, ncell)
+    mc = np.max(ct) * d3
+    ret = np.zeros((n, mc), dtype=np.int64)
+    count = np.zeros((n,), dtype=np.int64)
     # or ret = (n, nl) for each particles
     dim = np.zeros((d,), dtype=np.int64) + 3
     j_vecs = <long **> malloc(sizeof(long *) * d3)
@@ -154,28 +220,53 @@ def ql(double[:,:] x, double[:,:] y, long[:] ls, double[:] box, double rc):
                 jc = jth_neighbour(veci, j_vecs[j], ibox)
                 k = head[jc]
                 while k != -1:
-                    dx = y[k, 0] - x[i, 0]
-                    dy = y[k, 1] - x[i, 1]
-                    dz = y[k, 2] - x[i, 2]
+                    dx = x[k, 0] - x[i, 0]
+                    dy = x[k, 1] - x[i, 1]
+                    dz = x[k, 2] - x[i, 2]
                     dx = dx - box[0] * floor(dx / box[0] + 0.5)
                     dy = dy - box[1] * floor(dy / box[1] + 0.5)
                     dz = dz - box[2] * floor(dy / box[2] + 0.5)
                     dr = sqrt(dx * dx  + dy * dy + dz * dz)
-                    if 1e-5 < dr < rc:
-                        count[i] += 1.0
-                        #cosTheta = dz / dr # hand-made sph_harm
-                        #phi = atan2(dy, dx) + pi
-                        cosTheta = atan2(dy, dx) + pi
-                        phi = acos(dz/dr) # scipy sph_harm exp(-i \theta) sin(\phi)...
-                        for l in range(nl):
-                            for _m in range(-ls[l], ls[l]+1):
-                                #ret[i, l, _m+ls[l]] += sphereHarmonics(ls[l], _m, cosTheta, phi)
-                                ret[i, l, _m+ls[l]] += sph_harm(_m, ls[l], cosTheta, phi)
+                    if dr < rc:
+                        ret[i, count[i]] = k
+                        count[i] += 1
                     k = body[k]
             free(veci)
     free(j_vecs)
-    count[count < 1.0] = 1.0
-    #return np.sqrt(4 * np.pi * np.sum(np.abs(ret) ** 2, axis=-1)/ (2 * ls + 1).reshape(1, -1))
-    #return ret, count
-    #return np.sqrt(4 * np.pi * np.sum(np.abs(ret/c[:,None,None]) ** 2, axis=-1)/ (2 * ls + 1).reshape(1, -1))
+    return ret, count
+
+
+def q(double[:,:] x, double[:] box, double rc, long[:,:] nl, long[:] nc):
+    cdef long m, n, d, i, j, k, pj, pk, num_threads, l
+    cdef np.ndarray[np.complex128_t, ndim=3] ret
+    cdef np.ndarray[np.int64_t, ndim=1] count
+    cdef double dr, dx, dy, dz, theta, phi
+    cdef long[:] ls = np.zeros((2,), dtype=np.int64)
+    ls[0] = 4
+    ls[1] = 6
+    n = x.shape[0]
+    ret = np.zeros((n, 2, 13), dtype=np.complex128) # q4, q6
+    count = np.zeros((n,), dtype=np.int64)
+    num_threads = multiprocessing.cpu_count()
+    with nogil, parallel(num_threads=num_threads):
+        for i in prange(n, schedule='static'):
+            for j in range(nc[i] - 1):
+                pj = nl[i, j]
+                for k in range(j + 1, nc[i]):
+                    pk = nl[i, k]
+                    dx = x[pk, 0] - x[pj, 0]
+                    dy = x[pk, 1] - x[pj, 1]
+                    dz = x[pk, 2] - x[pj, 2]
+                    dx = dx - box[0] * floor(dx / box[0] + 0.5)
+                    dy = dy - box[1] * floor(dy / box[1] + 0.5)
+                    dz = dz - box[2] * floor(dy / box[2] + 0.5)
+                    dr = sqrt(dx * dx + dy * dy + dz * dz)
+                    if dr < rc:
+                        count[i] += 1
+                        theta = atan2(dy, dx) + pi
+                        phi = acos(dz/dr)
+                        for l in range(2):
+                            for m in range(-ls[l], ls[l]+1):
+                                ret[i, l, m+ls[l]] += sph_harm(m, ls[l], theta, phi)
+    #np.sqrt(4 * np.pi * np.sum(np.abs(ret/ct[:,None,None]) ** 2, axis=-1)/ (2 * ls + 1).reshape(1, -1))
     return ret, count
