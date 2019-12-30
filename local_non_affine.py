@@ -6,6 +6,31 @@ from math import sqrt
 from numba import cuda
 
 
+@cuda.jit("void(float64[:,:], float64[:], float64[:], float64[:], float64[:])", device=True)
+def cu_mat_dot_v_pbc(a, b, c, box, ret):
+    for i in range(a.shape[0]):
+        tmp = 0
+        for j in range(a.shape[1]):
+            dc = b[j] - c[j]
+            dc = dc - box[j] * floor(dc / box[j] + 0.5)
+            tmp += a[i, j] * dc
+        ret[i] = tmp
+
+@cuda.jit("void(float64[:,:], float64[:], float64[:])", device=True)
+def cu_mat_dot_v(a, b, ret):
+    for i in range(a.shape[0]):
+        tmp = 0
+        for j in range(a.shape[1]):
+            tmp += a[i, j] * b[j]
+        ret[i] = tmp
+
+@cuda.jit("float64(float64[:])", device=True)
+def cu_v_mod(r):
+    tmp = 0
+    for i in range(r.shape[0]):
+        tmp += r[i] ** 2
+    return sqrt(tmp)
+
 @cuda.jit("int64(float64[:], float64[:], int64[:])", device=True)
 def cu_cell_id(p, box, ibox):  # In the Fortran way
     ret = floor((p[0] / box[0] + 0.5) * ibox[0])
@@ -98,17 +123,6 @@ def cu_nl(a, box, rc, da, xy0=0, gpu=0):
         "float64[:,:],float64,int64[:],int64[:],int64[:], int64[:])"
     )
     def cu_nc(_a, _box, _ibox, _da, _l0, _rc, _cl, _cc, _nc, _dim):
-        r"""
-        :param _a: positions of a, (n_pa, n_d)
-        :param _b: positions of b, (n_pb, n_d)
-        :param _box: box, (n_d,)
-        :param _ibox: bins, (n_d,)
-        :param _rc: r_cut of rdf, double
-        :param _cl: cell-list of b, (n_pb,)
-        :param _cc: cell-count-cum, (n_cell + 1,)
-        :param _ret: Ql
-        :return: None
-        """
         i = cuda.grid(1)
         if i >= _a.shape[0]:
             return
@@ -116,6 +130,7 @@ def cu_nl(a, box, rc, da, xy0=0, gpu=0):
         cell_vec_i = cuda.local.array(ndim, nb.int64)  # unravel the cell id
         unravel_index_f_cu(cell_i, _ibox, cell_vec_i)  # unravel the cell id
         cell_vec_j = cuda.local.array(ndim, nb.int64)
+        _dv = cuda.local.array(ndim, nb.float64)
         for j in range(_a.shape[1] ** 3):
             unravel_index_f_cu(j, _dim, cell_vec_j)
             _add_local_arr_mois_1(cell_vec_j, cell_vec_i)
@@ -128,16 +143,8 @@ def cu_nl(a, box, rc, da, xy0=0, gpu=0):
                 pid_k = _cl[k]
                 if pid_k == i:
                     continue
-                dx = _a[i, 0] - _a[pid_k, 0]
-                dy = _a[i, 1] - _a[pid_k, 1]
-                dz = _a[i, 2] - _a[pid_k, 2]
-                dx = dx - _box[0] * floor(dx / _box[0] + 0.5)
-                dy = dy - _box[1] * floor(dy / _box[1] + 0.5)
-                dz = dz - _box[2] * floor(dz / _box[2] + 0.5)
-                dx0 = _l0[0, 0] * dx + _l0[0, 1] * dy + _l0[0, 2] * dz
-                dy0 = _l0[1, 0] * dx + _l0[1, 1] * dy + _l0[1, 2] * dz
-                dz0 = _l0[2, 0] * dx + _l0[2, 1] * dy + _l0[2, 2] * dz
-                dr = sqrt(dx0 * dx0 + dy0 * dy0 + dz0 * dz0)
+                cu_mat_dot_v_pbc(_l0, _a[pid_k], _a[i], _box, _dv)
+                dr = cu_v_mod(_dv)
                 delta = (_da[i] + _da[pid_k])/2 - 1
                 if dr - delta < _rc:
                     _nc[i] += 1
@@ -147,17 +154,6 @@ def cu_nl(a, box, rc, da, xy0=0, gpu=0):
         "float64,int64[:],int64[:],int64[:,:],int64[:], int64[:])"
     )
     def _nl(_a, _box, _ibox, _da, _l0, _rc, _cl, _cc, _ret, _nc, _dim):
-        r"""
-        :param _a: positions of a, (n_pa, n_d)
-        :param _b: positions of b, (n_pb, n_d)
-        :param _box: box, (n_d,)
-        :param _ibox: bins, (n_d,)
-        :param _rc: r_cut of rdf, double
-        :param _cl: cell-list of b, (n_pb,)
-        :param _cc: cell-count-cum, (n_cell + 1,)
-        :param _ret: Ql
-        :return: None
-        """
         i = cuda.grid(1)
         if i >= _a.shape[0]:
             return
@@ -165,6 +161,7 @@ def cu_nl(a, box, rc, da, xy0=0, gpu=0):
         cell_vec_i = cuda.local.array(ndim, nb.int64)  # unravel the cell id
         unravel_index_f_cu(cell_i, _ibox, cell_vec_i)  # unravel the cell id
         cell_vec_j = cuda.local.array(ndim, nb.int64)
+        _dv = cuda.local.array(ndim, nb.float64)
         for j in range(_a.shape[1] ** 3):
             unravel_index_f_cu(j, _dim, cell_vec_j)
             _add_local_arr_mois_1(cell_vec_j, cell_vec_i)
@@ -177,16 +174,8 @@ def cu_nl(a, box, rc, da, xy0=0, gpu=0):
                 pid_k = _cl[k]
                 if pid_k == i:
                     continue
-                dx = _a[i, 0] - _a[pid_k, 0]
-                dy = _a[i, 1] - _a[pid_k, 1]
-                dz = _a[i, 2] - _a[pid_k, 2]
-                dx = dx - _box[0] * floor(dx / _box[0] + 0.5)
-                dy = dy - _box[1] * floor(dy / _box[1] + 0.5)
-                dz = dz - _box[2] * floor(dz / _box[2] + 0.5)
-                dx0 = _l0[0, 0] * dx + _l0[0, 1] * dy + _l0[0, 2] * dz
-                dy0 = _l0[1, 0] * dx + _l0[1, 1] * dy + _l0[1, 2] * dz
-                dz0 = _l0[2, 0] * dx + _l0[2, 1] * dy + _l0[2, 2] * dz
-                dr = sqrt(dx0 * dx0 + dy0 * dy0 + dz0 * dz0)
+                cu_mat_dot_v_pbc(_l0, _a[pid_k], _a[i], _box, _dv)
+                dr = cu_v_mod(_dv)
                 delta = (_da[i] + _da[pid_k])/2 - 1
                 if dr - delta < _rc:
                     _ret[i, _nc[i]] = pid_k
@@ -207,7 +196,6 @@ def cu_nl(a, box, rc, da, xy0=0, gpu=0):
 
 
 def local_non_affine_of_ab(a, b, box, xy0, xyt, da, rc, gpu=0):
-    dim = np.ones(a.shape[1], dtype=np.int64) * 3
     ndim = a.shape[1]
     l0 = np.array([[1, xy0, 0], [0, 1., 0], [0, 0, 1]])
     lt = np.array([[1, xyt, 0], [0, 1., 0], [0, 0, 1]])
@@ -234,108 +222,38 @@ def local_non_affine_of_ab(a, b, box, xy0, xyt, da, rc, gpu=0):
         "float64[:,:,:], float64[:,:,:], float64[:,:], float64[:,:])"
     )
     def _cu_XY(_a, _b, _box, _nl, _nc, _Xij, _Yij, _l0, _lt):
-        r"""
-        :param _a: positions of a, (n_pa, n_d)
-        :param _b: positions of b, (n_pb, n_d)
-        :param _box: box, (n_d,)
-        :param _ibox: bins, (n_d,)
-        :param _da: diameters of a, (n_pa,)
-        :param _db: diameters of b, (n_pb,)
-        :param _bs: binsize of rdf, double
-        :param _rc: r_cut of rdf, double
-        :param _cl: cell-list of b, (n_pb,)
-        :param _cc: cell-count-cum, (n_cell + 1,)
-        :param _ret: rdfs of (n_pa, n_bin)
-        :return: None
-        """
         i = cuda.grid(1)
         if i >= _a.shape[0]:
             return
+        _dr0 = cuda.local.array(ndim, nb.float64)
+        _drt = cuda.local.array(ndim, nb.float64)
         for j in range(_nc[i]):
             pj = _nl[i, j]
-            dx = _a[i, 0] - _a[pj, 0]
-            dy = _a[i, 1] - _a[pj, 1]
-            dz = _a[i, 2] - _a[pj, 2]
-            dx = dx - _box[0] * floor(dx / _box[0] + 0.5)
-            dy = dy - _box[1] * floor(dy / _box[1] + 0.5)
-            dz = dz - _box[2] * floor(dz / _box[2] + 0.5)
-            dx0 = _l0[0, 0] * dx + _l0[0, 1] * dy + _l0[0, 2] * dz
-            dy0 = _l0[1, 0] * dx + _l0[1, 1] * dy + _l0[1, 2] * dz
-            dz0 = _l0[2, 0] * dx + _l0[2, 1] * dy + _l0[2, 2] * dz
-            dx = _b[i, 0] - _b[pj, 0]
-            dy = _b[i, 1] - _b[pj, 1]
-            dz = _b[i, 2] - _b[pj, 2]
-            dx = dx - _box[0] * floor(dx / _box[0] + 0.5)
-            dy = dy - _box[1] * floor(dy / _box[1] + 0.5)
-            dz = dz - _box[2] * floor(dz / _box[2] + 0.5)
-            dxt = _lt[0, 0] * dx + _lt[0, 1] * dy + _lt[0, 2] * dz
-            dyt = _lt[1, 0] * dx + _lt[1, 1] * dy + _lt[1, 2] * dz
-            dzt = _lt[2, 0] * dx + _lt[2, 1] * dy + _lt[2, 2] * dz
-            _Xij[i, 0, 0] += dxt * dx0
-            _Xij[i, 0, 1] += dxt * dy0
-            _Xij[i, 0, 2] += dxt * dz0
-            _Xij[i, 1, 0] += dyt * dx0
-            _Xij[i, 1, 1] += dyt * dy0
-            _Xij[i, 1, 2] += dyt * dz0
-            _Xij[i, 2, 0] += dzt * dx0
-            _Xij[i, 2, 1] += dzt * dy0
-            _Xij[i, 2, 2] += dzt * dz0
-            _Yij[i, 0, 0] += dx0 * dx0
-            _Yij[i, 0, 1] += dx0 * dy0
-            _Yij[i, 0, 2] += dx0 * dz0
-            _Yij[i, 1, 0] += dy0 * dx0
-            _Yij[i, 1, 1] += dy0 * dy0
-            _Yij[i, 1, 2] += dy0 * dz0
-            _Yij[i, 2, 0] += dz0 * dx0
-            _Yij[i, 2, 1] += dz0 * dy0
-            _Yij[i, 2, 2] += dz0 * dz0
+            cu_mat_dot_v_pbc(_l0, _a[pj], _a[i], _box, _dr0)
+            cu_mat_dot_v_pbc(_lt, _b[pj], _b[i], _box, _drt)
+            for k in range(ndim):
+                for l in range(ndim):
+                    _Xij[i, k, l] += _drt[k] * _dr0[l]
+                    _Yij[i, k, l] += _dr0[k] * _dr0[l]
 
     @cuda.jit(
         "void(float64[:,:],float64[:,:],float64[:], int64[:,:],"
         "int64[:],float64[:,:,:], float64[:,:], float64[:,:], float64[:])"
     )
     def _cu_DIV(_a, _b, _box, _nl, _nc, _XIY, _l0, _lt, _ret):
-        r"""
-        :param _a: positions of a, (n_pa, n_d)
-        :param _b: positions of b, (n_pb, n_d)
-        :param _box: box, (n_d,)
-        :param _ibox: bins, (n_d,)
-        :param _da: diameters of a, (n_pa,)
-        :param _db: diameters of b, (n_pb,)
-        :param _bs: binsize of rdf, double
-        :param _rc: r_cut of rdf, double
-        :param _cl: cell-list of b, (n_pb,)
-        :param _cc: cell-count-cum, (n_cell + 1,)
-        :param _ret: rdfs of (n_pa, n_bin)
-        :return: None
-        """
         i = cuda.grid(1)
         if i >= _a.shape[0]:
             return
+        _dr0 = cuda.local.array(ndim, nb.float64)
+        _drt = cuda.local.array(ndim, nb.float64)
+        _dr = cuda.local.array(ndim, nb.float64)
         for j in range(_nc[i]):
             pj = _nl[i, j]
-            dx = _a[i, 0] - _a[pj, 0]
-            dy = _a[i, 1] - _a[pj, 1]
-            dz = _a[i, 2] - _a[pj, 2]
-            dx = dx - _box[0] * floor(dx / _box[0] + 0.5)
-            dy = dy - _box[1] * floor(dy / _box[1] + 0.5)
-            dz = dz - _box[2] * floor(dz / _box[2] + 0.5)
-            dx0 = _l0[0, 0] * dx + _l0[0, 1] * dy + _l0[0, 2] * dz
-            dy0 = _l0[1, 0] * dx + _l0[1, 1] * dy + _l0[1, 2] * dz
-            dz0 = _l0[2, 0] * dx + _l0[2, 1] * dy + _l0[2, 2] * dz
-            dx = _b[i, 0] - _b[pj, 0]
-            dy = _b[i, 1] - _b[pj, 1]
-            dz = _b[i, 2] - _b[pj, 2]
-            dx = dx - _box[0] * floor(dx / _box[0] + 0.5)
-            dy = dy - _box[1] * floor(dy / _box[1] + 0.5)
-            dz = dz - _box[2] * floor(dz / _box[2] + 0.5)
-            dxt = _lt[0, 0] * dx + _lt[0, 1] * dy + _lt[0, 2] * dz
-            dyt = _lt[1, 0] * dx + _lt[1, 1] * dy + _lt[1, 2] * dz
-            dzt = _lt[2, 0] * dx + _lt[2, 1] * dy + _lt[2, 2] * dz
-            dx = dxt - (_XIY[i, 0, 0] * dx0 + _XIY[i, 0, 1] * dy0 + _XIY[i, 0, 2] * dz0)
-            dy = dyt - (_XIY[i, 1, 0] * dx0 + _XIY[i, 1, 1] * dy0 + _XIY[i, 1, 2] * dz0)
-            dz = dzt - (_XIY[i, 2, 0] * dx0 + _XIY[i, 2, 1] * dy0 + _XIY[i, 2, 2] * dz0)
-            _ret[i] += dx * dx + dy * dy + dz * dz
+            cu_mat_dot_v_pbc(_l0, _a[pj], _a[i], _box, _dr0)
+            cu_mat_dot_v_pbc(_lt, _b[pj], _b[i], _box, _drt)
+            cu_mat_dot_v(_XIY[i], _dr0, _dr)
+            for k in range(ndim):
+                _ret[i] += (_drt[k] - _dr[k]) ** 2
         _ret[i] = _ret[i] / _nc[i]
 
     with cuda.gpus[0]:
