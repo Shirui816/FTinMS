@@ -292,5 +292,5 @@ if __name__ == "__main__":
     lt = np.array([[1, xyt, 0], [0, 1., 0], [0, 0, 1]])
     XIY, DIV = local_non_affine_of_ab(a, b, box, l0, lt, da, rc, gpu=0)
     XIY = XIY - np.eye(a.shape[1])
-    np.savetxt('local_div.txt', np.hstack([a, DIV.reshape(-1, 1)]))
-    np.savetxt('local_tensor.txt', np.hstack([a, XIY.reshape(a.shape[0], -1)]))
+    np.savetxt('local_div.txt', np.hstack([a, DIV.reshape(-1, 1)]), fmt='%.6f')
+    np.savetxt('local_tensor.txt', np.hstack([a, XIY.reshape(a.shape[0], -1)]), fmt='%.6f')
