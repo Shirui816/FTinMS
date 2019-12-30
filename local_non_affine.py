@@ -260,7 +260,8 @@ def local_non_affine_of_ab(a, b, box, l0, lt, da, rc, gpu=0):
             cu_mat_dot_v(_XIY[i], _dr0, _dr)
             for k in range(ndim):
                 _ret[i] += (_drt[k] - _dr[k]) ** 2
-        _ret[i] = _ret[i] / _nc[i]
+        if _nc[i] != 0:
+            _ret[i] = _ret[i] / _nc[i]
 
     with cuda.gpus[gpu]:
         device = cuda.get_current_device()
@@ -269,7 +270,9 @@ def local_non_affine_of_ab(a, b, box, l0, lt, da, rc, gpu=0):
         _cu_XY[bpg, tpb](
             a0, b0, box, nl, nc, Xij, Yij, l0, lt
         )
-        XIY = np.matmul(Xij, np.linalg.inv(Yij))
+        # XIY = np.matmul(Xij, np.linalg.inv(Yij))
+        XIY = np.matmul(Xij, np.linalg.pinv(Yij, hermitian=True))
+        # Moore-Penrose inverse, for nc[i] < ndim
         _cu_DIV[bpg, tpb](
             a0, b0, box, nl, nc, XIY, l0, lt, DIV
         )
