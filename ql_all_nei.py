@@ -168,6 +168,7 @@ def cu_nl(a, box, rc, gpu=0):
                 if dr < _rc:
                     _ret[i, _nc[i]] = pid_k
                     _nc[i] += 1
+
     with cuda.gpus[0]:
         device = cuda.get_current_device()
         tpb = device.WARP_SIZE
@@ -178,7 +179,7 @@ def cu_nl(a, box, rc, gpu=0):
     return ret, nc
 
 
-def ql(x, box, rc, ls = np.array([4, 6])):
+def ql(x, box, rc, ls=np.array([4, 6])):
     nl, nc = cu_nl(x, box, rc)
     _d = (ls.shape[0], int(2 * ls.max() + 1))
     _dd = _d[0]
@@ -219,7 +220,7 @@ def ql(x, box, rc, ls = np.array([4, 6])):
             nn = 1.0
         for _ in range(_d[0]):
             for __ in range(_d[1]):
-                resi[_] += abs(Qveci[_, __]/nn) ** 2
+                resi[_] += abs(Qveci[_, __] / nn) ** 2
         for _ in range(_d[0]):
             _ret[i, _] = sqrt(resi[_] * 4 * pi / (2 * _ls[_] + 1))
 
@@ -231,6 +232,7 @@ def ql(x, box, rc, ls = np.array([4, 6])):
             a, box, rc, nl, nc, ls, ret
         )
     return ret
+
 
 a = np.loadtxt('fcc_13.xyz')
 box = np.array([100., 100, 100])
