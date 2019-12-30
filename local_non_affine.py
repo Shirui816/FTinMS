@@ -16,6 +16,7 @@ def cu_mat_dot_v_pbc(a, b, c, box, ret):
             tmp += a[i, j] * dc
         ret[i] = tmp
 
+
 @cuda.jit("void(float64[:,:], float64[:], float64[:])", device=True)
 def cu_mat_dot_v(a, b, ret):
     for i in range(a.shape[0]):
@@ -24,12 +25,14 @@ def cu_mat_dot_v(a, b, ret):
             tmp += a[i, j] * b[j]
         ret[i] = tmp
 
+
 @cuda.jit("float64(float64[:])", device=True)
 def cu_v_mod(r):
     tmp = 0
     for i in range(r.shape[0]):
         tmp += r[i] ** 2
     return sqrt(tmp)
+
 
 @cuda.jit("int64(float64[:], float64[:], int64[:])", device=True)
 def cu_cell_id(p, box, ibox):  # In the Fortran way
@@ -110,8 +113,10 @@ def cu_cell_list(pos, box, ibox, gpu=0):
     cell_counts = np.r_[0, np.cumsum(np.bincount(cell_id, minlength=n_cell))]
     return cell_list.astype(np.int64), cell_counts.astype(np.int64)
 
-def cu_nl(a, box, rc, da, xy0=0, gpu=0):
-    l0 = np.array([[1., xy0, 0], [0, 1., 0], [0, 0, 1]])
+
+def cu_nl(a, box, rc, da, l0, gpu=0):
+    # l0 is the strain tensor of the reference frame, box is always cubic of 0 strain.
+    # l0 = np.array([[1., xy0, 0], [0, 1., 0], [0, 0, 1]])
     dim = np.ones(a.shape[1], dtype=np.int64) * 3
     ndim = a.shape[1]
     ibox = np.asarray(np.round(box / (rc + da.max())), dtype=np.int64)
@@ -145,7 +150,7 @@ def cu_nl(a, box, rc, da, xy0=0, gpu=0):
                     continue
                 cu_mat_dot_v_pbc(_l0, _a[pid_k], _a[i], _box, _dv)
                 dr = cu_v_mod(_dv)
-                delta = (_da[i] + _da[pid_k])/2 - 1
+                delta = (_da[i] + _da[pid_k]) / 2 - 1
                 if dr - delta < _rc:
                     _nc[i] += 1
 
@@ -176,11 +181,12 @@ def cu_nl(a, box, rc, da, xy0=0, gpu=0):
                     continue
                 cu_mat_dot_v_pbc(_l0, _a[pid_k], _a[i], _box, _dv)
                 dr = cu_v_mod(_dv)
-                delta = (_da[i] + _da[pid_k])/2 - 1
+                delta = (_da[i] + _da[pid_k]) / 2 - 1
                 if dr - delta < _rc:
                     _ret[i, _nc[i]] = pid_k
                     _nc[i] += 1
-    with cuda.gpus[0]:
+
+    with cuda.gpus[gpu]:
         device = cuda.get_current_device()
         tpb = device.WARP_SIZE
         bpg = ceil(a.shape[0] / tpb)
@@ -195,15 +201,15 @@ def cu_nl(a, box, rc, da, xy0=0, gpu=0):
     return ret, nc
 
 
-def local_non_affine_of_ab(a, b, box, xy0, xyt, da, rc, gpu=0):
+def local_non_affine_of_ab(a, b, box, l0, lt, da, rc, gpu=0):
     ndim = a.shape[1]
-    l0 = np.array([[1, xy0, 0], [0, 1., 0], [0, 0, 1]])
-    lt = np.array([[1, xyt, 0], [0, 1., 0], [0, 0, 1]])
+    # l0 = np.array([[1, xy0, 0], [0, 1., 0], [0, 0, 1]])
+    # lt = np.array([[1, xyt, 0], [0, 1., 0], [0, 0, 1]])
     invl0 = np.linalg.inv(l0)
     invlt = np.linalg.inv(lt)
     a0 = invl0.dot(a.T).T
     b0 = invlt.dot(b.T).T
-    nl, nc = cu_nl(a0, box, rc, da, xy0)
+    nl, nc = cu_nl(a0, box, rc, da, l0)
     Xij = np.zeros((a.shape[0], ndim, ndim), dtype=np.float64)
     Yij = np.zeros((a.shape[0], ndim, ndim), dtype=np.float64)
     DIV = np.zeros((a.shape[0],), dtype=np.float64)
@@ -256,7 +262,7 @@ def local_non_affine_of_ab(a, b, box, xy0, xyt, da, rc, gpu=0):
                 _ret[i] += (_drt[k] - _dr[k]) ** 2
         _ret[i] = _ret[i] / _nc[i]
 
-    with cuda.gpus[0]:
+    with cuda.gpus[gpu]:
         device = cuda.get_current_device()
         tpb = device.WARP_SIZE
         bpg = ceil(a.shape[0] / tpb)
@@ -274,12 +280,14 @@ if __name__ == "__main__":
     from sys import argv
 
     a, b = np.loadtxt(argv[1], dtype=np.float), np.loadtxt(argv[2], dtype=np.float)
-    box = np.array([47.56874465942,47.56874465942,47.56874465942], dtype=np.float)
+    box = np.array([47.56874465942, 47.56874465942, 47.56874465942], dtype=np.float)
     rc = 3.0
     da = np.ones(a.shape[0], dtype=np.float)
     xy0 = 0
     xyt = 0.09999900311232
-    XIY, DIV = local_non_affine_of_ab(a, b, box, xy0, xyt, da, rc, gpu=0)
-    XIY = XIY + np.eye(a.shape[1])
+    l0 = np.array([[1, xy0, 0], [0, 1., 0], [0, 0, 1]])
+    lt = np.array([[1, xyt, 0], [0, 1., 0], [0, 0, 1]])
+    XIY, DIV = local_non_affine_of_ab(a, b, box, l0, lt, da, rc, gpu=0)
+    XIY = XIY - np.eye(a.shape[1])
     np.savetxt('local_div.txt', np.hstack([a, DIV.reshape(-1, 1)]))
     np.savetxt('local_tensor.txt', np.hstack([a, XIY.reshape(a.shape[0], -1)]))
