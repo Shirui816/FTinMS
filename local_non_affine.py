@@ -279,8 +279,8 @@ def local_non_affine_of_ab(a, b, box, l0, lt, da, rc, gpu=0):
 if __name__ == "__main__":
     from sys import argv
 
-    a, b = np.loadtxt(argv[1], dtype=np.float), np.loadtxt(argv[2], dtype=np.float)
-    box = np.array([47.56874465942, 47.56874465942, 47.56874465942], dtype=np.float)
+    a, b = np.loadtxt(argv[1], dtype=np.float), np.loadtxt(argv[2], dtype=np.float64)
+    box = np.array([47.56874465942, 47.56874465942, 47.56874465942], dtype=np.float64)
     rc = 3.0
     da = np.ones(a.shape[0], dtype=np.float)
     xy0 = 0
