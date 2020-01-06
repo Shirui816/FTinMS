@@ -210,7 +210,9 @@ def ql(x, box, rc, ls=np.array([4, 6])):
                 dr = sqrt(dx ** 2 + dy ** 2 + dz ** 2)
                 if dr < rc:
                     nn += 1.0
-                    phi = atan2(dy, dx) + pi
+                    phi = atan2(dy, dx)
+                    if phi < 0:
+                        phi = phi + 2 * pi
                     cosTheta = dz / dr
                     for _l in range(_ls.shape[0]):
                         l = _ls[_l]
