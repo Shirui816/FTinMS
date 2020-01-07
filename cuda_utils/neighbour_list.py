@@ -177,9 +177,9 @@ def neighbour_list(a, box, rc, da=None, strain=None, gpu=0):
             d_a, d_box, d_ibox, d_da, d_str, rc, d_cl, d_cc, d_nc, d_dim
         )
         nc = d_nc.copy_to_host()
-        nl = np.zeros((n, nc.max()), dtype=np.int64)
+        d_nl = cuda.device_array((n, nc.max()), dtype=np.int64)
         _init_array[bpg, tpb](d_nc, 0)
         _nl[bpg, tpb](
-            d_a, d_box, d_ibox, d_da, d_str, rc, d_cl, d_cc, nl, d_nc, d_dim
+            d_a, d_box, d_ibox, d_da, d_str, rc, d_cl, d_cc, d_nl, d_nc, d_dim
         )
-    return nl, nc
+    return d_nl.copy_to_host(), nc
