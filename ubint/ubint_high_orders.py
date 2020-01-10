@@ -115,8 +115,9 @@ for _line in _meta_file:
     a2 = kbT * (0.5 / m2)
     a3 = kbT * (-m3 / (6 * m2 ** 3))
     a4 = kbT * (-gamma2 / (24 * m2 ** 2) + m3 ** 2 / (8 * m2 ** 5))
-    # n3 = 2 * quad(p3, 0, 10, args=(a1, a2, a3, kbT))[0]  # div to infinity if a3, a4 < 0
-    # n4 = 2 * quad(p4, 0, 10, args=(a1, a2, a3, a4, kbT))[0]
+    #n3 = 2 * quad(p3, -np.inf, np.inf, args=(a1, a2, a3, kbT))[0]  # div to infinity if a3, a4 < 0
+    #n4 = 2 * quad(p4, -np.inf, np.inf, args=(a1, a2, a3, a4, kbT))[0]
+    #print(a1,a2,a3,a4,n3,n4)
     _window_info.append(
         [m1, kstat(_window_data, n=2), kstat(_window_data, n=3),
          kstat(_window_data, n=4), center_, spring_konst, kbT,
