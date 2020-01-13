@@ -54,14 +54,11 @@ arg_parser.add_argument('-Q', '--order',
                         default=2, metavar='order',
                         dest='order', type=int,
                         help="Order of probability function.")
-arg_parser.add_argument('meta_file',
-                        nargs=None,
-                        help='Meta file name')
+arg_parser.add_argument('meta_file', help='Meta file name')
 arg_parser.add_argument('range', nargs=2, default=None,
                         metavar='Range of xi', type=float,
                         help="Range of reaction coordinate.")
-arg_parser.add_argument('max_bin',
-                        type=int, nargs=None,
+arg_parser.add_argument('max_bin', type=int,
                         help='How many bins were used in integration.')
 
 args = arg_parser.parse_args()
@@ -173,8 +170,8 @@ for _line in _meta_file:
         else:
             m1 = _xi_mean_w
             m2 = _xi_var_w
-            m3 = np.mean((_window_data) ** 3)
-            m4 = np.mean((_window_data) ** 4)
+            m3 = np.mean(_window_data ** 3)
+            m4 = np.mean(_window_data ** 4)
             gamma1 = m3 / m2 ** 1.5
             gamma2 = m4 / m2 ** 2 - 3
             _a1_w = _kbT_w * (0.5 * m3 / m2 ** 2 - m1 / m2)
@@ -199,10 +196,10 @@ for _line in _meta_file:
                                 _a3_w * _delta_xis ** 3 + _a4_w * _delta_xis ** 4) / _kbT_w)
                 _ntmp = np.sum(_tmp)
                 _dAu_dxis_pb_w += (_kbT_w * _delta_xis / _xi_k2_w + 0.5 * _kbT_w * _xi_k3_w / _xi_k2_w ** 2 *
-                             (1 - _delta_xis ** 2 / _xi_k2_w) +
-                             _kbT_w * (0.5 * _xi_k3_w ** 2 / _xi_k2_w ** 5 -
-                                       1 / 6 * _xi_g2_w / _xi_k2_w ** 2) *
-                             _delta_xis ** 3 - _k_w * _delta_xis_ref) * _tmp / _ntmp
+                                   (1 - _delta_xis ** 2 / _xi_k2_w) +
+                                   _kbT_w * (0.5 * _xi_k3_w ** 2 / _xi_k2_w ** 5 -
+                                             1 / 6 * _xi_g2_w / _xi_k2_w ** 2) *
+                                   _delta_xis ** 3 - _k_w * _delta_xis_ref) * _tmp / _ntmp
     _pb_xi += _tmp / _ntmp
     _min.append(_window_data.min() + _xi_mean_w)
     _min.append(_window_data.max() + _xi_mean_w)
