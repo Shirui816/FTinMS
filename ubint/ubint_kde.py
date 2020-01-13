@@ -151,7 +151,7 @@ for _line in _meta_file:
         _Z = np.poly1d(_z)
         _dz = np.poly1d(_z[:-1] * np.arange(_order, 0, -1))
         _tmp = np.exp(-_Z(_delta_xis) / _kbT_w)
-        _ntmp = simps(_tmp, _delta_xis)
+        _ntmp = np.sum(_tmp)  # normalization factor, simple summation.
         _pb_xi += _tmp / _ntmp
         _dAu_dxis_pb_w += (_kbT_w * _dz(_delta_xis) -
                            _k_w * _delta_xis_ref) * _tmp / _ntmp
