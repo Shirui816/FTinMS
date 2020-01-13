@@ -114,14 +114,14 @@ for _line in _meta_file:
     a1 = kbT * (0.5 * m3 / m2 ** 2 - m1 / m2)
     a2 = kbT * (0.5 / m2)
     a3 = kbT * (-m3 / (6 * m2 ** 3))
-    a4 = kbT * (-gamma2 / (24 * m2 ** 2) + m3 ** 2 / (8 * m2 ** 5))
-    #n3 = 2 * quad(p3, -np.inf, np.inf, args=(a1, a2, a3, kbT))[0]  # div to infinity if a3, a4 < 0
-    #n4 = 2 * quad(p4, -np.inf, np.inf, args=(a1, a2, a3, a4, kbT))[0]
-    #print(a1,a2,a3,a4,n3,n4)
+    a4 = np.abs(kbT * (-gamma2 / (24 * m2 ** 2) + m3 ** 2 / (8 * m2 ** 5)))
+    n3 = 2 * quad(p3, -np.inf, np.inf, args=(a1, a2, a3, kbT))[0]  # div to infinity if a3, a4 < 0
+    n4 = 2 * quad(p4, -np.inf, np.inf, args=(a1, a2, a3, a4, kbT))[0]
+    print(a1,a2,a3,a4,n3,n4)
     _window_info.append(
         [m1, kstat(_window_data, n=2), kstat(_window_data, n=3),
          kstat(_window_data, n=4), center_, spring_konst, kbT,
-         a1, a2, a3, a4, _window_data.var()]  # , n3, n4]
+         a1, a2, np.abs(a3), np.abs(a4), _window_data.var(), n3, n4]
     )
     _min.append(_window_data.min())
     _min.append(_window_data.max())
@@ -153,8 +153,8 @@ _a2_w = _window_info.T[8][:, np.newaxis]
 _a3_w = _window_info.T[9][:, np.newaxis]
 _a4_w = _window_info.T[10][:, np.newaxis]
 _xi_var_w = _window_info.T[11][:, np.newaxis]
-# _n3_w = _window_info.T[12][:, np.newaxis]
-# _n4_w = _window_info.T[13][:, np.newaxis]
+_n3_w = _window_info.T[12][:, np.newaxis]
+_n4_w = _window_info.T[13][:, np.newaxis]
 _pbc_xis = _xis
 if _period > 0:
     _pbc_xis = pbc(_xis - _xi_mean_w, _period) + _xi_center_w
@@ -172,7 +172,7 @@ if _order == 2:
 if _order == 3:
     _dAu_dxis = _kbT_w * _delta_xis / _xi_k2_w + 0.5 * _kbT_w * _xi_k3_w / _xi_k2_w ** 2 * (
             1 - _delta_xis ** 2 / _xi_k2_w) - _k_w * (_pbc_xis - _xi_center_w)
-    _pb_i = np.exp(-(_a1_w * _delta_xis + _a2_w * _delta_xis ** 2 + _a3_w * _delta_xis ** 3))  # / _n3_w
+    _pb_i = np.exp(-(_a1_w * _delta_xis + _a2_w * _delta_xis ** 2 + _a3_w * _delta_xis ** 3))  / _n3_w
 
 if _order == 4:
     _dAu_dxis = _kbT_w * _delta_xis / _xi_k2_w + 0.5 * _kbT_w * _xi_k3_w / _xi_k2_w ** 2 * (
@@ -180,14 +180,14 @@ if _order == 4:
                 _kbT_w * (0.5 * _xi_k3_w ** 2 / _xi_k2_w ** 5 - 1 / 6 * _xi_g2_w / _xi_k2_w ** 2) * \
                 _delta_xis ** 3 - _k_w * (_pbc_xis - _xi_center_w)
     _pb_i = np.exp(
-        -(_a1_w * _delta_xis + _a2_w * _delta_xis ** 2 + _a3_w * _delta_xis ** 3 + _a4_w * _delta_xis ** 4))  # / _n4_w
+        -(_a1_w * _delta_xis + _a2_w * _delta_xis ** 2 + _a3_w * _delta_xis ** 3 + _a4_w * _delta_xis ** 4))  / _n4_w
 
 # N_iP_i(\xi_{bin}), with shape (n_window, n_xi),
 # all Nis are same in this case
 
-_norm = simps(_pb_i, _pbc_xis, axis=1)[:, None]
+#_norm = simps(_pb_i, _pbc_xis, axis=1)[:, None]
 # _norm = np.sum(_pb_i, axis=1)[:, None]
-_pb_i = _pb_i / _norm
+#_pb_i = _pb_i / _norm
 _dA_dxis = np.sum(_dAu_dxis * _pb_i, axis=0)
 _pb_xi = np.sum(_pb_i, axis=0)
 _dA_dxis /= _pb_xi
