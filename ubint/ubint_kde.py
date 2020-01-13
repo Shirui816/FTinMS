@@ -161,6 +161,9 @@ for _line in _meta_file:
     else:
         if _mode == 'kde':
             _z = np.polyfit(_x, -_kbT_w * np.log(_pi_w), _order, w=_pi_w)
+            # weights are set to be the probability itself, the fitting is
+            # in well accord within the data range. PDF out of the data range
+            # extended by Gaussian KDE is very close to 0.
             _Z = np.poly1d(_z)
             _dz = np.poly1d(_z[:-1] * np.arange(_order, 0, -1))
             _tmp = np.exp(-_Z(_delta_xis) / _kbT_w)
