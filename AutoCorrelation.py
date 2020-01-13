@@ -25,7 +25,7 @@ for _ in range(0, all_chains, n_chains):
     # n_frames_ft, n_chains, n_modes, n_dim
     # summing up along n_dim then perform ift, then suming over n_chains
     autoCorr = autoCorr +\
-        np.fft.irfft(np.sum(abs(FX)**2, axis=3), axis=0).sum(axis=1)[:n_frames]
+        np.fft.irfft(np.sum(abs(FX)**2, axis=3), axis=0, n=2 * n_frames).sum(axis=1)[:n_frames]
     # n_frames, n_modes
 autoCorr = autoCorr / all_chains / np.arange(n_frames, 0, -1)[:, np.newaxis]
 autoCorr = autoCorr / autoCorr[0]
