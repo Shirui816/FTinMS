@@ -68,7 +68,7 @@ alvars = vars(args)
 # Utils
 def pbc(x, d):
     r"""Period boundary condition."""
-    return x - d * np.round(x / d)
+    return x - d * np.floor(x / d + 0.5)
 
 
 # Variables
@@ -145,7 +145,7 @@ for line in meta_file:
         window_data = window_data - xi_mean_w
         delta_xis = xis - xi_mean_w
         delta_xis_ref = xis - xi_center_w
-    kde = gaussian_kde(window_data)
+    kde = gaussian_kde(window_data, bw_method=0.1)
     pi_w = kde(x)
 
     if order == 2:
@@ -153,7 +153,7 @@ for line in meta_file:
         # and summation of p^b_w
         tmp = 1 / np.sqrt(2 * np.pi) * 1 / np.sqrt(xi_var_w) * \
               np.exp(-0.5 * delta_xis ** 2 / xi_var_w)
-        n_tmp = 1
+        n_tmp = 1.
         dAu_dxis_pb_w += (kbT_w * delta_xis / xi_var_w -
                           k_w * delta_xis_ref) * tmp
     elif mode == 'kde' and order > 0:
@@ -169,12 +169,12 @@ for line in meta_file:
                           k_w * delta_xis_ref) * tmp / n_tmp
     elif mode == 'kde' and order == 0:
         # "pure" kde
-        tmp = kde(delta_xis)
-        n_tmp = simps(tmp, delta_xis)
         if period == 0:
             delta_xis_ext = np.r_[delta_xis, delta_xis[-1] + dxi]
         else:
             delta_xis_ext = np.r_[delta_xis, pbc(xis[-1] + dxi - xi_mean_w, period)]
+        tmp = kde(delta_xis_ext)[:-1]
+        n_tmp = 1. #np.sum(tmp)
         dAu_dxis_pb_w += (-kbT_w * np.diff(np.log(kde(delta_xis_ext))) / dxi
                           - k_w * delta_xis_ref) * tmp / n_tmp
     elif mode == 'kastner':
@@ -223,6 +223,7 @@ if period != 0 and max(min_) - min(min_) < period:
                   UserWarning)
 
 dAu_dxis = dAu_dxis_pb_w / pb_xi
+dAu_dxis -= dAu_dxis.mean()  # remove the drifting
 pmf = np.array([simps(dAu_dxis[xis <= r], xis[xis <= r]) for r in xis])
 np.savetxt(out_put_file, np.vstack([xis, pmf, dAu_dxis]).T, fmt="%.6f")
 out_put_file.close()
