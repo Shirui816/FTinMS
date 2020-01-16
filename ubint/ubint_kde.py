@@ -163,7 +163,7 @@ for line in meta_file:
         dAu_dxis_pb_w += (kbT_w * delta_xis / xi_var_w -
                           k_w * delta_xis_ref) * tmp
     elif mode == 'kde' and order > 0:
-        z_ = np.polyfit(x, -kbT_w * np.log(pi_w), order, w=pi_w)
+        z_ = np.polyfit(x, -kbT_w * np.log(pi_w), order, w=pi_w/pi_w.max())
         # Fit the probability if the extended results of kde is not trusted
         # weights are set to be the probability itself, the fitting is
         # in well accord within the data range. PDF out of the data range
