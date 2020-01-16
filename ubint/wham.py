@@ -10,17 +10,13 @@ from scipy.constants import Avogadro as NA
 import numpy as np
 import pandas as pd
 from argparse import RawTextHelpFormatter
-from scipy.integrate import simps
 from scipy.stats import gaussian_kde
 from scipy.stats import circmean
-from scipy.stats import kstat
 
-# use gaussian_kde and fit exp(-(\sum_i a_i x_i^(i-1)); periodic data
-# the numerical stability of exp(-(\sum_i a_i x_i^(i-1)) is the key, make sure
-# that fitting range is large enough so that mean force does not diverge.
-
-description = """An Umbrella Integration program (Gaussian KDE version).
+description = """WHAM.py (Gaussian KDE version).
 Written by Shirui shirui816@gmail.com
+Bootstrap enhance sampling method is on the way.
+I will aslo try GAN to enhance sampling.
 ### metafile format:
 /window/data window_center sprint_konst [Temperature]
 ### window data file format:
