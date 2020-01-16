@@ -154,7 +154,7 @@ while True:
     if counter % 1000 == 0:
         print("F_i - F_0 for each window (%d):" % (counter))
         for i, line in enumerate(f_w):
-            print(i, '%.4f' % (line))
+            print(i, '%.4f' % (line - f_w[0]))
     counter += 1
     if np.allclose(pu_xis_old, pu_xis, rtol=1e-5):
         break
