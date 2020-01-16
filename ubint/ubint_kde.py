@@ -150,9 +150,10 @@ for line in meta_file:
         window_data = window_data - xi_mean_w
         delta_xis = xis - xi_mean_w
         delta_xis_ref = xis - xi_center_w
-    kde = gaussian_kde(window_data, bw_method=0.1)
-    pi_w = kde(x)
-    pi_w = np.where(pi_w > 0, pi_w, 1e-100)  # avoid 0 for log
+    if mode == 'kde':
+        kde = gaussian_kde(window_data, bw_method=0.1)
+        pi_w = kde(x)
+        pi_w = np.where(pi_w > 0, pi_w, 1e-100)  # avoid 0 for np.log
     if order == 2:
         # evaluate \partial A^{ub}_w / \partial \xi \times P^b_w(\xi)
         # and summation of p^b_w
