@@ -152,9 +152,9 @@ while True:
     pu_xis = pu_xis / pu_xis.sum()
     f_w = 1 / (bias_w_xis.dot(pu_xis))
     if counter % 1000 == 0:
-        print("F_i - F_0 for each window (%d):" % (counter))
+        print("F for each window (%d):" % (counter))
         for i, line in enumerate(f_w):
-            print(i, '%.4f' % (line - f_w[0]))
+            print(i, '%.4f' % (line))
     counter += 1
     if np.allclose(pu_xis_old, pu_xis, rtol=1e-5):
         break
