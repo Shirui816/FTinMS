@@ -154,7 +154,7 @@ def cu_nl(a, box, rc, gpu=0):
         cell_vec_i = cuda.local.array(ndim, nb.int64)  # unravel the cell id
         unravel_index_f_cu(cell_i, _ibox, cell_vec_i)  # unravel the cell id
         cell_vec_j = cuda.local.array(ndim, nb.int64)
-        for j in range(_a.shape[1] ** 3):
+        for j in range(3 ** ndim):
             unravel_index_f_cu(j, _dim, cell_vec_j)
             _add_local_arr_mois_1(cell_vec_j, cell_vec_i)
             # cell_vec_i + (-1, -1, -1) to (+1, +1, +1)
