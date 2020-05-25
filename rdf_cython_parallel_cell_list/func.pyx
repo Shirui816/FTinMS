@@ -111,8 +111,8 @@ def rdf(double[:,:] x, double[:,:] y, double[:] box, double bs, long nbins):
                 k = head[jc]
                 while k != -1:
                     r = pbc_dist(x[i], y[k], box)
-                    if r < r_cut:
-                        l = <long> (r/bs)
+                    l = <long> (r/bs)
+                    if l < nbins:
                         ret[thread_num, l]+=1
                     k = body[k]
             free(veci)
