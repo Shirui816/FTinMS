@@ -210,7 +210,7 @@ ts_bar = tqdm.trange(n_steps, desc='00000th step, t:0.0000', leave=True, unit='s
 #    v = v + 0.5 * a0 * dt
 #    positions = pbc(positions + v * dt, box)
 #    at = force(positions, typeid, box, parameters, ibox, head, body, cell_map)
-#    at = force_bf(positions, typeid, box, parameters)
+#    at = force_bf(positions, typeid, box, parameters)  # brute force version
 #    v = v + 0.5 * at * dt
 #    ts_bar.set_description("%05dth step, t:%.4f" % (ts, 0.5 * np.mean(v ** 2) * n_dim))
 
@@ -220,11 +220,11 @@ for ts in ts_bar:
     # if not ts % 100:
     #    frames.append(positions)
     a0 = force(positions, typeid, box, parameters, ibox, head, body, cell_map) - zeta * v
-    # a0 = force_bf(positions, typeid, box, parameters) - zeta * v
+    # a0 = force_bf(positions, typeid, box, parameters) - zeta * v  # brute force version
     positions = pbc(positions + v * dt + 0.5 * a0 * dt ** 2, box)
     vh = v + 0.5 * dt * a0
     at = force(positions, typeid, box, parameters, ibox, head, body, cell_map)
-    # at = force_bf(positions, typeid, box, parameters)
+    # at = force_bf(positions, typeid, box, parameters)  # brute force version
     K = 0.5 * np.sum(v ** 2)
     zeta_h = zeta + 0.5 * dt / Q * (K - g * t_target)
     zeta = zeta_h + 0.5 * dt / Q * (0.5 * np.sum(vh ** 2) - g * t_target)
