@@ -74,7 +74,7 @@ def lj_div_r(r2, parameter):
 
 
 @nb.jit(nopython=True, nogil=True)
-def cell_id(x, b, ib):
+def cell_id(x, b, ib):  # which cell of a particle, in the fortran way
     ret = int((x[0] / b[0] + 0.5) * ib[0])
     tmp = ib[0]
     for i in range(1, x.shape[0]):
@@ -83,6 +83,7 @@ def cell_id(x, b, ib):
     return ret
 
 
+# head-body cell list, see book Computer Simulation of Liquis
 @nb.jit(nopython=True, nogil=True)
 def linked_cl(x, b, ib, h, bd):
     for i in range(x.shape[0]):
@@ -99,7 +100,7 @@ def build_cell_list(x, b, ib):
 
 
 @nb.jit(nopython=True, nogil=True)
-def unravel_index_f(i, dim):
+def unravel_index_f(i, dim):  # unraval index in the fortran way
     d = dim.shape[0]
     ret = np.zeros(d, dtype=np.int64)
     for k in range(d):
@@ -108,12 +109,19 @@ def unravel_index_f(i, dim):
     return ret
 
 
+# jth neighbour cell, for 2d of 9 cells, j -> (0, 8)
+# and neighbours are cell_vec_i + (-1, 1) to (1, 1)
+# 1. evaluate cell id of cell_i
+# 2. unravel cell_i to cell_vec_i, using ibox (dimension of cells)
+# 3. neighbours cell_vec_j = cell_vec_i + (-1, -1) (left, down) to (1, 1) (right, up)
+#    the vectors (-1, -1) to (1, 1) are unraveled from 0~8 (3^2 for 2d) with shape (3, 3) (2d)
+# 4. ravel cell_vec_j to cell id, cell_j, using ibox
 @nb.jit(nopython=True, nogil=True)
-def jth_neighbour(veci, vecj, dim):
+def jth_neighbour(veci, vecj, dim):  # vecj is the shifting vector from (0,0) to (2,2) (2d)
     d = dim.shape[0]
-    ret = (veci[0] + vecj[0] - 1 + dim[0]) % dim[0]
+    ret = (veci[0] + vecj[0] - 1 + dim[0]) % dim[0]  # -1 to ensure moving from (-1, -1) to (1, 1) (2d)
     tmp = dim[0]
-    for k in range(1, d):
+    for k in range(1, d):  # ravel index in the fortran way
         ret += ((veci[k] + vecj[k] - 1 + dim[k]) % dim[k]) * tmp
         tmp *= dim[k]
     return ret
@@ -124,12 +132,14 @@ def build_cell_struct(ib):
     n_d = ib.shape[0]
     ret = np.zeros((n_cell, 3 ** n_d), dtype=np.int64)
     dim = np.zeros((n_d,), dtype=np.int64) + 3
+    # j_vecs are shifting vector, from (0, 0) to (2, 2) (2d)
     j_vecs = np.empty((3 ** n_d, n_d), dtype=np.int64)
     for i in range(3 ** n_d):
         j_vecs[i] = unravel_index_f(i, dim)
     for ic in range(n_cell):
-        veci = unravel_index_f(ic, ib)
-        for j in range(3 ** n_d):
+        veci = unravel_index_f(ic, ib)  # cell vector for ith cell
+        for j in range(3 ** n_d):  # 9 neighbours (2d)
+            # ravel (cell_vec_i + shifting vector - 1) using ibox
             jc = jth_neighbour(veci, j_vecs[j], ib)
             ret[ic, j] = jc
     return ret
@@ -225,6 +235,7 @@ at = np.zeros_like(positions)
 # at = ft
 # v = v + 0.5 * at * dt
 # K = np.sum(v ** 2) * 0.5
+# # energy should be constant here
 # ts_bar.set_description("%05dth step, t:%.4f, e:%.4f" % (ts, K / positions.shape[0], et.sum()+K))
 
 # nh
