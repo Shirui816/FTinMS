@@ -32,6 +32,7 @@ shuffle(typeids)  # mix particles by mixing ids ~~
 typeid = np.asarray(typeids, dtype=np.int64)
 # c = np.array(['k', 'r'])[typeid]
 
+
 # animate functions
 # fig, ax = plt.subplots()
 # def animate(frame):
@@ -51,9 +52,9 @@ r_cut = 2.5
 for ti in types:
     for tj in types:
         if ti == tj:
-            parameters[ti, tj] = [-24, 1, r_cut ** 2]
+            parameters[ti, tj] = [-24 * 3, 1, r_cut ** 2]
         else:
-            parameters[ti, tj] = [-24, 1, (2 ** (1 / 6)) ** 2]
+            parameters[ti, tj] = [-24, 1, r_cut ** 2]
 
 
 # functions
@@ -65,7 +66,11 @@ def pbc(x, d):
 # -24 \epsilon \sigma^6 r^{-14} (r^6 - 2 \sigma^6) -- parameter[0] -> -24\epsilon, parameter[1] -> \simga^6
 @nb.jit(nopython=True, nogil=True)
 def lj_div_r(r2, parameter):
-    return parameter[0] * parameter[1] * pow(r2, -7) * (pow(r2, 3) - 2 * parameter[1])
+    res = np.zeros(2, dtype=np.float64)
+    sigma6r6inv = pow(r2, -3) * parameter[1]
+    res[1] = parameter[0] * parameter[1] * pow(r2, -7) * (pow(r2, 3) - 2 * parameter[1])
+    res[0] = -parameter[0] / 6 * sigma6r6inv * (sigma6r6inv - 1)
+    return res
 
 
 @nb.jit(nopython=True, nogil=True)
@@ -133,6 +138,7 @@ def build_cell_struct(ib):
 @nb.jit(nopython=True, nogil=True)
 def force(x, t_id, b, params, ib, h, bd, cm):
     forces = np.zeros_like(x)
+    energy = np.zeros((x.shape[0],), dtype=np.float64)
     for i in range(x.shape[0]):
         ti = t_id[i]
         ic = cell_id(x[i], b, ib)
@@ -149,17 +155,21 @@ def force(x, t_id, b, params, ib, h, bd, cm):
                 # dij = positions[j] - positions[i]
                 rij2 = dij.dot(dij)
                 if rij2 < parameter[-1]:  # parameter[-1] r_{cut}^2
-                    f = lj_div_r(rij2, parameter) * dij
+                    lj = lj_div_r(rij2, parameter)
+                    f = lj[1] * dij
                     # r_ij and f_ji
                     forces[i] += -f  # f^j = f_{lj} / dr * dr^j, dr^j = dr^x, dr^y, dr^z
                     forces[j] += f
+                    energy[i] += lj[0] / 2
+                    energy[j] += lj[0] / 2
                 j = bd[j]
-    return forces
+    return forces, energy
 
 
 # @nb.jit(nopython=True, nogil=True)
 # def force_bf(x, t_id, b, params):
 #    forces = np.zeros_like(x)
+#    energy = np.zeros((x.shape[0],), dtype=np.float64)
 #    for i in range(x.shape[0] - 1):
 #        ti = t_id[i]
 #        for j in range(i + 1, x.shape[0]):
@@ -169,26 +179,28 @@ def force(x, t_id, b, params, ib, h, bd, cm):
 #            # dij = positions[j] - positions[i]
 #            rij2 = dij.dot(dij)
 #            if rij2 < parameter[-1]:  # parameter[-1] r_{cut}^2
-#                f = lj_div_r(rij2, parameter) * dij
+#                lj = lj_div_r(rij2, parameter)
+#                f = lj[1] * dij
 #                # r_ij and f_ji
 #                forces[i] += -f  # f^j = f_{lj} / dr * dr^j, dr^j = dr^x, dr^y, dr^z
 #                forces[j] += f
-#    return forces
+#                energy[i] += lj[0] / 2
+#                energy[j] += lj[0] / 2
+#    return forces, energy
 
 
 # integrate, vv
-dt = 0.008
-n_steps = 30000
+dt = 0.005
+n_steps = 20000
 # v = np.zeros_like(positions)  # initialize v
 v = np.random.random(positions.shape)
 v = v - v.mean(axis=0)
 v = v / (np.mean(v ** 2) * 0.5 * n_dim) ** 0.2
 positions = pbc(positions, box)
-
 print("Run simulation with %d %d-D particles." % positions.shape)
 
 g = 0.5 * (n_dim * positions.shape[0] + 1)  # nh g
-Q = n_dim * positions.shape[0] * 0.5  # nh Q
+Q = n_dim * positions.shape[0] * 0.2  # nh Q
 t_target = 1.0  # target temperature
 zeta = 0.0  # initial zeta for nh
 
@@ -200,37 +212,37 @@ cell_map = build_cell_struct(ibox)
 # frames = []
 
 # init progress bar
-ts_bar = tqdm.trange(n_steps, desc='00000th step, t:0.0000', leave=True, unit='step')
+ts_bar = tqdm.trange(n_steps, desc='00000th step, t:0.0000, e:0.0000', leave=True, unit='step')
+at = np.zeros_like(positions)
 
 # nve
 # for ts in ts_bar:
-#    head, body = build_cell_list(positions, box, ibox)
-#    a0 = force(positions, typeid, box, parameters, ibox, head, body, cell_map)
-#    a0 = force_bf(positions, typeid, box, parameters)
-#    v = v + 0.5 * a0 * dt
-#    positions = pbc(positions + v * dt, box)
-#    at = force(positions, typeid, box, parameters, ibox, head, body, cell_map)
-#    at = force_bf(positions, typeid, box, parameters)  # brute force version
-#    v = v + 0.5 * at * dt
-#    ts_bar.set_description("%05dth step, t:%.4f" % (ts, 0.5 * np.mean(v ** 2) * n_dim))
+# v = v + 0.5 * at * dt
+# positions = pbc(positions + v * dt, box)
+# head, body = build_cell_list(positions, box, ibox)
+# ft, et = force(positions, typeid, box, parameters, ibox, head, body, cell_map)
+# #ft, et = force_bf(positions, typeid, box, parameters)[0]  # brute force version
+# at = ft
+# v = v + 0.5 * at * dt
+# K = np.sum(v ** 2) * 0.5
+# ts_bar.set_description("%05dth step, t:%.4f, e:%.4f" % (ts, K / positions.shape[0], et.sum()+K))
 
 # nh
 for ts in ts_bar:
+    at = at - zeta * v  # all 0 for 1th step
+    positions = pbc(positions + v * dt + 0.5 * at * dt ** 2, box)
+    vh = v + 0.5 * dt * at
     head, body = build_cell_list(positions, box, ibox)
     # if not ts % 100:
     #    frames.append(positions)
-    a0 = force(positions, typeid, box, parameters, ibox, head, body, cell_map) - zeta * v
-    # a0 = force_bf(positions, typeid, box, parameters) - zeta * v  # brute force version
-    positions = pbc(positions + v * dt + 0.5 * a0 * dt ** 2, box)
-    vh = v + 0.5 * dt * a0
-    at = force(positions, typeid, box, parameters, ibox, head, body, cell_map)
-    # at = force_bf(positions, typeid, box, parameters)  # brute force version
+    ft, et = force(positions, typeid, box, parameters, ibox, head, body, cell_map)
+    # ft, et = force_bf(positions, typeid, box, parameters)  # brute force version
+    at = ft
     K = 0.5 * np.sum(v ** 2)
     zeta_h = zeta + 0.5 * dt / Q * (K - g * t_target)
     zeta = zeta_h + 0.5 * dt / Q * (0.5 * np.sum(vh ** 2) - g * t_target)
     v = (vh + 0.5 * at * dt) / (1 + 0.5 * dt * zeta)
-    ts_bar.set_description("%05dth step, t:%.4f" % (ts, K / positions.shape[0]))
-
+    ts_bar.set_description("%05dth step, t:%.4f, e:%.4f" % (ts, K / positions.shape[0], et.sum() + K))
 
 # movie
 # ani = animation.FuncAnimation(fig, animate, interval=12.5, frames=frames)
@@ -238,21 +250,24 @@ for ts in ts_bar:
 
 
 # backup functions, parallel version of force, maybe slow for small systems
-@nb.jit(nopython=True, nogil=True, parallel=True)
-def force_parallel(x, t_id, b, params):
-    forces = np.zeros_like(x)
-    for i in nb.prange(x.shape[0]):
-        ti = t_id[i]
-        for j in range(x.shape[0]):
-            if i == j:
-                continue
-            tj = t_id[j]
-            parameter = params[ti, tj]
-            dij = pbc(x[j] - x[i], b)
-            # dij = positions[j] - positions[i]
-            rij2 = dij.dot(dij)
-            if rij2 < parameter[-1]:  # parameter[-1] r_{cut}^2
-                f = lj_div_r(rij2, parameter) * dij
-                # r_ij and f_ji
-                forces[i] += -f  # f^j = f_{lj} / dr * dr^j, dr^j = dr^x, dr^y, dr^z
-    return forces
+# @nb.jit(nopython=True, nogil=True, parallel=True)
+# def force_parallel(x, t_id, b, params):
+#    forces = np.zeros_like(x)
+#    energy = np.zeros(x.shape[0], dtype=np.float64)
+#    for i in nb.prange(x.shape[0]):
+#        ti = t_id[i]
+#        for j in range(x.shape[0]):
+#            if i == j:
+#                continue
+#            tj = t_id[j]
+#            parameter = params[ti, tj]
+#            dij = pbc(x[j] - x[i], b)
+#            # dij = positions[j] - positions[i]
+#            rij2 = dij.dot(dij)
+#            if rij2 < parameter[-1]:  # parameter[-1] r_{cut}^2
+#                lj = lj_div_r(rij2, parameter)
+#                f = lj[1] * dij
+#                # r_ij and f_ji
+#                forces[i] += -f  # f^j = f_{lj} / dr * dr^j, dr^j = dr^x, dr^y, dr^z
+#                energy[i] += 0.5 * lj[0]
+#    return forces, energy
