@@ -10,7 +10,12 @@ from scipy.spatial import cKDTree
 
 __doc__ = """Ql calculation, building NN with cKDTree, slower but simpler.
 Ql for particle i is all "bond order" of pairs surrounding the particle.
-the Q6 for center particle of FCC structure is 0.5745
+the Q4, Q6 for center particle of FCC structure are 0.1909, 0.5745
+0.0972, 0.4848 for hcp
+0.0364, 0.5107 for bcc
+W4, W6 for fcc are -0.1593, -0.0132
+0.1341, -0.0124 for hcp
+0.1593, 0.0132 for bcc
 """
 
 
