@@ -153,6 +153,6 @@ class Ql(object):
 X = np.loadtxt('xyz.txt')
 box = np.array([38., 28, 10], dtype=np.float64)
 # X = X - box / 2  # no need for moving box center to 0, using cKDTree building NN
-Q46 = Ql(ls=np.array([6], dtype=np.int64), gpu=0)
+Q46 = Ql(ls=np.array([4, 6], dtype=np.int64), gpu=0)
 ret = Q46.calculate(x=X, box=box, rc=0.38 * 2)
 np.savetxt('out_ql.txt', ret, fmt='%.4f')
