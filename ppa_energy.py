@@ -369,6 +369,8 @@ class PPA_energy_minimizer(object):
         e0 = 0
         converge = False
         rebuild_p = True
+        guess_cl = 30
+        guess_nn = 10
         with cuda.gpus[self.gpu]:
             d_x = cuda.to_device(x)
             d_box = cuda.to_device(box)
@@ -401,6 +403,8 @@ class PPA_energy_minimizer(object):
             d_bd_energy = cuda.pinned_array(1, dtype=np.float64)
             d_cell_index = cuda.device_array((self.n_atoms,), dtype=np.int64)
             d_forces = cuda.to_device(forces)
+            d_cell_list = cuda.device_array((self.n_cell, guess_cl), dtype=np.int64)
+            d_nn = cuda.device_array((self.n_atoms, guess_nn), dtype=np.int64)
 
         while not converge:
             d_bd_energy[0] = 0.0
@@ -409,23 +413,21 @@ class PPA_energy_minimizer(object):
             if rebuild_p:
                 s_rebuild[0] = 0
                 rebuild_p = False
-                guess_cl = max((30, s_cell_max[0]))
                 self.set_int_1d[bpg_cell, tpb](d_cell_count, 0)
-                d_cell_list = cuda.device_array((self.n_cell, guess_cl), dtype=np.int64)
                 self.build_cell_list[bpg, tpb](d_x, d_box, d_cell_dim, d_cell_list, d_cell_count, d_cell_index,
                                                s_cell_max)
                 if s_cell_max[0] > guess_cl:
+                    guess_cl = s_cell_max[0]
                     self.set_int_1d[bpg_cell, tpb](d_cell_count, 0)
                     d_cell_list = cuda.device_array((self.n_cell, s_cell_max[0]), dtype=np.int64)
                     self.build_cell_list[bpg, tpb](d_x, d_box, d_cell_dim, d_cell_list, d_cell_count, d_cell_index,
                                                    s_cell_max)
-                guess_nn = max((30, s_nn[0]))
-                d_nn = cuda.device_array((self.n_atoms, guess_nn), dtype=np.int64)
                 self.build_nn[bpg, tpb](
                     d_x, rc2, d_box, d_cell_index, d_cell_dim, d_mol_table, d_mol_info,
                     d_cell_list, d_cell_count, d_cell_map, d_n_count, d_nn, s_nn, d_last_x
                 )
                 if s_nn[0] > guess_nn:
+                    guess_nn = s_nn[0]
                     d_nn = cuda.device_array((self.n_atoms, s_nn[0]), dtype=np.int64)
                     self.build_nn[bpg, tpb](
                         d_x, rc2, d_box, d_cell_index, d_cell_dim, d_mol_table, d_mol_info,
