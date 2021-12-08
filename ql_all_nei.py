@@ -70,7 +70,7 @@ class Ql(object):
         print("Building calculator...")
         s = time.time()
         with cuda.gpus[gpu]:
-            self.calculator = self.calculator()
+            self.calculator = self.build_calculator()
         print("Done. Time costing: %.4fs." % (time.time() - s))
 
     def calculate(self, x, box, rc):
@@ -97,7 +97,7 @@ class Ql(object):
         print("Done. Time costing: %.4fs." % (time.time() - s))
         return np.hstack([x, ret])
 
-    def calculator(self):
+    def build_calculator(self):
         _dim_local_vec = self.dim_local_vec
         _dim_local_ret_vec = self.dim_local_ret_vec
         with cuda.gpus[self.gpu]:
