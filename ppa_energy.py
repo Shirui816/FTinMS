@@ -139,7 +139,7 @@ class PPA_energy_minimizer(object):
             def _pbc_vec(_x, _y, _box, _vec):
                 for i in range(_x.shape[0]):
                     dx = _y[i] - _x[i]
-                    dx = dx - box[i] * floor(dx / _box[i] + 0.5)
+                    dx = dx - _box[i] * floor(dx / _box[i] + 0.5)
                     _vec[i] = dx
 
             @cuda.jit("int64(int64, int64, int64[:], int64[:,:])", device=True)
