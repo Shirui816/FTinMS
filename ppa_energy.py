@@ -1,9 +1,7 @@
 import time
 from math import pow, sqrt, floor, ceil
-from sys import argv
 
 import numpy as np
-from Xml import Xml
 from molecule import molecules
 from numba import cuda, jit, float64
 
@@ -110,7 +108,7 @@ class PPA_energy_minimizer(object):
                 ret = 0
                 n_cell = 1
                 for i in range(0, _x.shape[0]):
-                    tmp = _x[i] / box[i]
+                    tmp = _x[i] / _box[i]
                     # if tmp < -0.5 or tmp > 0.5:
                     # return -1
                     ret = ret + floor((tmp + 0.5) * _cell_dim[i]) * n_cell
@@ -458,13 +456,12 @@ class PPA_energy_minimizer(object):
         self.x = d_x.copy_to_host()
         cuda.synchronize()
 
-
-xml = Xml(argv[1], needed=['position', 'bond'])
-bond = xml.nodes['bond']
-bond.T[0] = 0
-bond = bond.astype(np.int64)
-box = np.asarray([xml.box.lx, xml.box.ly, xml.box.lz], dtype=np.float64)
-x = xml.nodes['position']
-ppa = PPA_energy_minimizer(gpu=0, n_dim=3)
-ppa.minimize(x, box, bond, 0.25)
-np.savetxt('ppa_out.txt', ppa.x, fmt='%.4f')
+# xml = Xml(argv[1], needed=['position', 'bond'])
+# bond = xml.nodes['bond']
+# bond.T[0] = 0
+# bond = bond.astype(np.int64)
+# box = np.asarray([xml.box.lx, xml.box.ly, xml.box.lz], dtype=np.float64)
+# x = xml.nodes['position']
+# ppa = PPA_energy_minimizer(gpu=0, n_dim=3)
+# ppa.minimize(x, box, bond, 0.25)
+# np.savetxt('ppa_out.txt', ppa.x, fmt='%.4f')
