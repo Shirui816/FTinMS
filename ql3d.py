@@ -5,7 +5,7 @@ from math import sqrt, floor, pi, atan2
 
 import numba as nb
 import numpy as np
-from numba import cuda
+from numba import cuda, complex128, complex64, float32, float64, int32, void
 from scipy.spatial import cKDTree
 
 __doc__ = """Ql calculation, building NN with cKDTree, slower but simpler.
@@ -19,7 +19,7 @@ W4, W6 for fcc are -0.1593, -0.0132
 """
 
 
-@cuda.jit("float64(int64, int64, float64)", device=True)
+@cuda.jit(device=True)
 def legendre(l, m, x):
     pmm = 1.0
     if m > 0:
@@ -40,7 +40,7 @@ def legendre(l, m, x):
     return pll
 
 
-@cuda.jit("complex128(int64, int64, float64, float64)", device=True)
+@cuda.jit(device=True)
 def spherical_harmonics(l, m, cos_theta, phi):
     m1 = abs(m)
     c = sqrt((2 * l + 1) * gamma(l - m1 + 1.) / (4 * pi * gamma(l + m1 + 1.)))
@@ -51,22 +51,14 @@ def spherical_harmonics(l, m, cos_theta, phi):
     return y * c + 0j
 
 
-@cuda.jit('float64(float64[:], float64[:], float64[:])', device=True)
-def pbc_dist_cu(a, b, box):
-    tmp = 0
-    for i in range(a.shape[0]):
-        d = b[i] - a[i]
-        d = d - floor(d / box[i] + 0.5) * box[i]
-        tmp += d * d
-    return sqrt(tmp)
-
 
 class Ql(object):
-    def __init__(self, ls=np.array([6], dtype=np.int64), gpu=0):
+    def __init__(self, ls=np.array([6], dtype=np.int32), dtype=np.float32, gpu=0):
         self.gpu = gpu
-        self.ls = ls
+        self.ls = np.asarray(ls, dtype=np.int32)
         self.dim_local_vec = (ls.shape[0], int(2 * ls.max() + 1))
         self.dim_local_ret_vec = self.dim_local_vec[0]
+        self.dtype = dtype
         print("Building calculator...")
         s = time.time()
         with cuda.gpus[gpu]:
@@ -74,11 +66,13 @@ class Ql(object):
         print("Done. Time costing: %.4fs." % (time.time() - s))
 
     def calculate(self, x, box, rc):
+        x = np.asarray(x, dtype=self.dtype)
+        box = np.asarray(box, dtype=self.dtype)
         print("Building neighbour list...")
         s = time.time()
         tree = cKDTree(np.mod(x, box), boxsize=box)
         _nn = tree.query_ball_point(np.mod(x, box), rc)
-        nn = np.zeros([len(_nn), len(max(_nn, key=lambda _x: len(_x)))], dtype=np.int64) - 1
+        nn = np.zeros([len(_nn), len(max(_nn, key=lambda _x: len(_x)))], dtype=np.int32) - 1
         for index, item in enumerate(_nn):
             nn[index][0:len(item)] = item
         print("Done. Time costing: %.4fs." % (time.time() - s))
@@ -87,27 +81,38 @@ class Ql(object):
         ret = np.zeros((x.shape[0], self.ls.shape[0]), dtype=np.float64)
         with cuda.gpus[self.gpu]:
             d_nn = cuda.to_device(nn)
-            device = cuda.get_current_device()
-            tpb = device.WARP_SIZE
-            # tpb = 32
-            bpg = ceil(x.shape[0] / tpb)
+            d_x = cuda.to_device(x)
+            d_box = cuda.to_device(box)
+            d_ret = cuda.to_device(ret)
+            d_ls = cuda.to_device(self.ls)
+            #device = cuda.get_current_device()
+            #tpb = device.WARP_SIZE
+            tpb = 64
+            bpg = int(ceil(x.shape[0] / tpb))
             self.calculator[bpg, tpb](
-                x, box, rc ** 2, d_nn, self.ls, ret
+                d_x, d_box, rc ** 2, d_nn, d_ls, d_ret
             )
+            d_ret.copy_to_host(ret)
         print("Done. Time costing: %.4fs." % (time.time() - s))
         return np.hstack([x, ret])
 
     def build_calculator(self):
         _dim_local_vec = self.dim_local_vec
         _dim_local_ret_vec = self.dim_local_ret_vec
+        if self.dtype == np.float32:
+            _float = float32
+            _complex = complex64
+        else:
+            _float = float64
+            _complex = complex128
         with cuda.gpus[self.gpu]:
-            @cuda.jit("void(float64[:,:], float64[:], float64, int64[:,:], int64[:], float64[:,:])")
+            @cuda.jit(void(_float[:, :], _float[:], _float, int32[:, :], int32[:], _float[:, :]))
             def _ql(_x, _box, _rc2, _nl, _ls, _ret):
                 i = cuda.grid(1)
                 if i >= _x.shape[0]:
                     return
-                q_vec_i = cuda.local.array(_dim_local_vec, nb.complex128)
-                res_i = cuda.local.array(_dim_local_ret_vec, nb.float64)
+                q_vec_i = cuda.local.array(_dim_local_vec, _complex)
+                res_i = cuda.local.array(_dim_local_ret_vec, _float)
                 for _ in range(_dim_local_vec[0]):
                     res_i[_] = 0
                     for __ in range(_dim_local_vec[1]):
@@ -144,15 +149,15 @@ class Ql(object):
                     nn = 1.0
                 for _ in range(_dim_local_vec[0]):
                     for __ in range(_dim_local_vec[1]):
-                        res_i[_] += abs(q_vec_i[_, __] / nn) ** 2
+                        res_i[_] += _float(abs(q_vec_i[_, __] / nn) ** 2)
                 for _ in range(_dim_local_vec[0]):
-                    _ret[i, _] = sqrt(res_i[_] * 4 * pi / (2 * _ls[_] + 1))
+                    _ret[i, _] = _float(sqrt(res_i[_] * 4 * pi / (2 * _ls[_] + 1)))
         return _ql
 
-
-X = np.loadtxt('xyz.txt')
-box = np.array([38., 28, 10], dtype=np.float64)
-# X = X - box / 2  # no need for moving box center to 0, using cKDTree building NN
-Q46 = Ql(ls=np.array([4, 6], dtype=np.int64), gpu=0)
-ret = Q46.calculate(x=X, box=box, rc=0.38 * 2)
-np.savetxt('out_ql.txt', ret, fmt='%.4f')
+if __name__ == "__main__":
+    X = np.loadtxt('xyz.txt')
+    box = np.array([38., 28, 10], dtype=np.float64)
+    # X = X - box / 2  # no need for moving box center to 0, using cKDTree building NN
+    Q46 = Ql(ls=np.array([4, 6], dtype=np.int32), gpu=0)
+    ret = Q46.calculate(x=X, box=box, rc=0.38 * 2)
+    np.savetxt('out_ql.txt', ret, fmt='%.4f')
