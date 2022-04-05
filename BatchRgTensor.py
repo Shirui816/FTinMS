@@ -1,6 +1,7 @@
 from numba import guvectorize
 from numba import float64
 import numpy as np
+import numba as nb
 
 
 @guvectorize([(float64[:, :], float64[:, :], float64[:, :])], '(n,p),(p,m)->(n,m)',
@@ -21,8 +22,9 @@ def batch_dot(a, b, ret):  # much more faster than np.tensordot or np.einsum
             ret[i, j] = tmp
 
 
+@nb.jit(nopython=True, nogil=True)
 def pbc(r, d):
-    return r - d * np.round(r / d)
+    return r - d * np.rint(r / d)
 
 
 def batchRgTensor(samples, boxes):
@@ -45,9 +47,10 @@ def batchRgTensor(samples, boxes):
     # boxes' dimension is always lower than samples by 2 (n_chains, n_monomers)
     # e.g., (10, 3) for 10 frames (10, n_chains, n_monomers, 3) for sample
     chain_length = samples.shape[-2]
-    samples = pbc(np.diff(samples, axis=-2), boxes).cumsum(axis=-2)  # samples -> (..., n_chains, n-1 monomers, n_dim)
-    com = np.expand_dims(samples.sum(axis=-2) / chain_length, -2)  # com -> (..., n_chains, 1, n_dim)
-    samples = np.append(-com, samples - com, axis=-2)  # samples - com of rest n-1 monomers and -com for the 1st monomer
+    samples = pbc(np.diff(samples, axis=-2, prepend=samples[..., :1, :]), boxes).cumsum(axis=-2)
+    # samples -> (..., n_chains, n_monomers, n_dim)
+    com = samples.sum(axis=-2, keepdims=True) / chain_length  # com -> (..., n_chains, 1, n_dim)
+    samples = samples - com
     rgTensors = batch_dot(np.swapaxes(samples, -2, -1), samples) / chain_length
     # batch_dot == np.einsum('...mp,...pn->...mn', np.swapaxes(samples, -2, -1), samples) -> (..., n_chains, n_dim, n_dim)
     # batch_dot == np.einsum('...mp,...pn->...mn', (..., n_chains, n_dim, n_monomers),  (..., n_chains, n_monomers, n_dim))
