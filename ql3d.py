@@ -78,7 +78,7 @@ class Ql(object):
         print("Done. Time costing: %.4fs." % (time.time() - s))
         print("Start calculating...")
         s = time.time()
-        ret = np.zeros((x.shape[0], self.ls.shape[0]), dtype=np.float64)
+        ret = np.zeros((x.shape[0], self.ls.shape[0]), dtype=self.dtype)
         with cuda.gpus[self.gpu]:
             d_nn = cuda.to_device(nn)
             d_x = cuda.to_device(x)
