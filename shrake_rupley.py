@@ -31,7 +31,7 @@ def pbc(r, d):
 def shrake_rupley_sasa(x, radiivdw, probe_radius=1.4, n_points=960, box=np.zeros(3)):
     sph = fibonacci_sphere(n_points)
     radiivdw = radiivdw + probe_radius
-    twice_maxradii = radiivdw.max() * 2.
+    cut_off = radiivdw.max() * 2.
     asa_ary = np.zeros((len(x)), dtype=np.int64)
     periodic_p = False
     if np.sum(box ** 2) > 1e-6:
@@ -48,7 +48,7 @@ def shrake_rupley_sasa(x, radiivdw, probe_radius=1.4, n_points=960, box=np.zeros
             kdt_sph = cKDTree(s_on_i, boxsize=box)
         else:
             kdt_sph = cKDTree(s_on_i)
-        for j in kdt.query_ball_point(x[i], twice_maxradii):
+        for j in kdt.query_ball_point(x[i], cut_off):
             if i != j:
                 dij = np.linalg.norm(pbc(x[i] - x[j], box), axis=-1)
                 if dij < r_i + radiivdw[j]:
