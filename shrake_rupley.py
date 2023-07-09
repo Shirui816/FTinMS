@@ -40,7 +40,6 @@ def shrake_rupley_sasa(x, radiivdw, probe_radius=1.4, n_points=256, box=np.zeros
         kdt = cKDTree(x, boxsize=box)
     else:
         kdt = cKDTree(x)
-    sasa = 0.
     for i in range(len(x)):
         r_i = radiivdw[i]
         s_on_i = pbc(sph * r_i + x[i], box)
@@ -57,7 +56,5 @@ def shrake_rupley_sasa(x, radiivdw, probe_radius=1.4, n_points=256, box=np.zeros
         asa_ary[i] = avail_sph.sum()
     f = 4. * np.pi * radiivdw ** 2. / n_points
     asa_ary = asa_ary * f
-    for i in range(len(x)):
-        sasa += asa_ary[i]
-    return sasa, asa_ary
+    return asa_ary
   
