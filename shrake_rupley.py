@@ -28,7 +28,7 @@ def pbc(r, d):
     return r - d * np.rint(r / d)
 
 
-def shrake_rupley_sasa(x, radiivdw, probe_radius=1.4, n_points=256, box=np.zeros(3)):
+def shrake_rupley_sasa(x, radiivdw, probe_radius=1.4, n_points=960, box=np.zeros(3)):
     sph = fibonacci_sphere(n_points)
     radiivdw = radiivdw + probe_radius
     twice_maxradii = radiivdw.max() * 2.
