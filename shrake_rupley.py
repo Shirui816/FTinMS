@@ -23,31 +23,23 @@ def fibonacci_sphere(n=1000):
 
 @nb.jit(nopython=True, nogil=True)
 def pbc(r, d):
-    if np.sum(d ** 2) <= 1e-6:
-        return r
     return r - d * np.rint(r / d)
 
 
-def shrake_rupley_sasa(x, radiivdw, probe_radius=1.4, n_points=960, box=np.zeros(3)):
+def shrake_rupley_sasa(x, radiivdw, probe_radius=1.4, n_points=960, box=None):
     sph = fibonacci_sphere(n_points)
     radiivdw = radiivdw + probe_radius
     cut_off = radiivdw.max() * 2.
     asa_ary = np.zeros((len(x)), dtype=np.int64)
-    periodic_p = False
-    if np.sum(box ** 2) > 1e-6:
-        periodic_p = True
-    if periodic_p:
-        kdt = cKDTree(x, boxsize=box)
-    else:
-        kdt = cKDTree(x)
+    if box is None:
+        box = np.ones(3) * (x.max(axis=0) - x.min(axis=0) + 2 * cut_off)
+    x = np.mod(x, box)
+    kdt = cKDTree(x, boxsize=box)
     for i in range(len(x)):
         r_i = radiivdw[i]
-        s_on_i = pbc(sph * r_i + x[i], box)
+        s_on_i = np.mod(sph * r_i + x[i], box)
         avail_sph = np.ones(n_points)
-        if periodic_p:
-            kdt_sph = cKDTree(s_on_i, boxsize=box)
-        else:
-            kdt_sph = cKDTree(s_on_i)
+        kdt_sph = cKDTree(s_on_i, boxsize=box)
         for j in kdt.query_ball_point(x[i], cut_off):
             if i != j:
                 dij = np.linalg.norm(pbc(x[i] - x[j], box), axis=-1)
