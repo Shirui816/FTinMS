@@ -29,7 +29,7 @@ def pbc(r, d):
 def shrake_rupley_sasa(x: np.ndarray[np.float64, 2], radii_vdw: np.ndarray[np.float64, 1],
                        probe_radius: float = 1.4, n_points: int = 960,
                        box: Union[None, np.ndarray[np.float64, 2]] = None) -> np.ndarray[np.float64, 1]:
-    r"""
+    r"""Calculate solvent accessible surface area for molecule using Shrake Rupley algorithm.
     :param x: coordinates, (n_particle, n_dim)
     :param radii_vdw: vdw radius of atoms, (n_particle,)
     :param probe_radius: probe molecule radius, 1.4 angstrom for water
