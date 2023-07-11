@@ -26,9 +26,9 @@ def pbc(r, d):
     return r - d * np.rint(r / d)
 
 
-def shrake_rupley_sasa(x: np.ndarray, radii_vdw: np.ndarray,
+def shrake_rupley_sasa(x: np.ndarray[np.float64, 2], radii_vdw: np.ndarray[np.float64, 1],
                        probe_radius: float = 1.4, n_points: int = 960,
-                       box: Union[None, np.ndarray] = None) -> np.ndarray:
+                       box: Union[None, np.ndarray[np.float64, 1]] = None) -> np.ndarray[np.float64, 1]:
     r"""Calculate solvent accessible surface area for molecule using Shrake Rupley algorithm.
     :param x: coordinates, (n_particle, n_dim)
     :param radii_vdw: vdw radius of atoms, (n_particle,)
