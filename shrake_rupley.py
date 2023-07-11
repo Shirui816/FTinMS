@@ -30,12 +30,12 @@ def shrake_rupley_sasa(x: np.ndarray[np.float64, 2], radii_vdw: np.ndarray[np.fl
                        probe_radius: float = 1.4, n_points: int = 960,
                        box: Union[None, np.ndarray[np.float64, 2]] = None) -> np.ndarray[np.float64, 1]:
     r"""
-    :param x: coordinates.
-    :param radii_vdw: vdw radius of atoms
+    :param x: coordinates, (n_particle, n_dim)
+    :param radii_vdw: vdw radius of atoms, (n_particle,)
     :param probe_radius: probe molecule radius, 1.4 angstrom for water
     :param n_points: mesh size for sphere
-    :param box: box size for pbc systems, box=None (default) is for no pbc
-    :return: array of solvent accessible surface area for atoms
+    :param box: box size for pbc systems (n_dim,), box=None (default) is for no pbc
+    :return: array of solvent accessible surface area for atoms (n_particles,)
     """
     sph = fibonacci_sphere(n_points)
     radii_vdw = radii_vdw + probe_radius
