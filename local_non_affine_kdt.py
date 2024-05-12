@@ -183,7 +183,8 @@ class LocalizedNonAffineDisp(object):
             d_Xij.copy_to_host(x_ij)
             d_Yij.copy_to_host(y_ij)
             cuda.synchronize()
-            xi_y = np.matmul(x_ij, np.linalg.pinv(y_ij, hermitian=True))  # may be collineation
+            xi_y = np.matmul(x_ij, np.linalg.pinv(y_ij, hermitian=True))
+            # no appropriate cuda method to do this currently
             d_XIY = cuda.to_device(xi_y)
             self._cu_DIV[bpg, tpb](
                 d_ox0, d_ox1, d_ob0, d_nn0, d_nc0, d_XIY, d_os0, d_os1, d_DIV
