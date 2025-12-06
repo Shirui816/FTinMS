@@ -99,10 +99,9 @@ if __name__ == "__main__":
     from matplotlib import pyplot as plt
 
     box = np.array([107.5896, 107.5896, 107.5896])  # box-size, in angstrom
-    bin_factor = 1.
     wave_length = 0.71  # 0.71 angstrom Mo Ka, 1.42 for Cu Ka, 1.034 for gromacs default 12keV
-    dq = 2 * np.pi / (box.max() / wave_length / bin_factor)
-    bins = np.asarray(box * bin_factor / wave_length, dtype=np.int64)
+    dq = 2 * np.pi / (box.max() / wave_length)
+    bins = np.asarray(box / wave_length, dtype=np.int64)
     data = pd.read_csv('data/positions.txt', header=None, sep='\s+')  # load (n, 3) positions
     types = data.values.T[0]
     xyz = data.values.T[1:].T
