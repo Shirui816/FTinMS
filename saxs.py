@@ -94,4 +94,26 @@ def sq(X, box, bins, types, qmax, dq=0.01):
     Iq = Iq / count
     Sq = Sq / count
     return IQ, SQ, Iq, Sq, qs, Qs
-  
+
+if __name__ == "__main__":
+    from matplotlib import pyplot as plt
+
+    box = np.array([107.5896, 107.5896, 107.5896])  # box-size, in angstrom
+    bin_factor = 1.
+    wave_length = 0.71  # 0.71 angstrom Mo Ka, 1.42 for Cu Ka, 1.034 for gromacs default 12keV
+    dq = 2 * np.pi / (box.max() / wave_length / bin_factor)
+    bins = np.asarray(box * bin_factor / wave_length, dtype=np.int64)
+    data = pd.read_csv('data/positions.txt', header=None, sep='\s+')  # load (n, 3) positions
+    types = data.values.T[0]
+    xyz = data.values.T[1:].T
+    IQ, SQ, Iq, Sq, qs, Qs = sq(xyz, box, bins, types, qmax=8, dq=dq)
+    qs1 = qs[Iq > 0][1:]
+    Iq = Iq[Iq > 0][1:]
+    plt.plot(qs1, Iq / xyz.shape[0] / 10)
+    plt.figure()
+    # 2D plot (qxy, qz, Iq)
+    plt.imshow(np.log10(IQ.sum(axis=1)), origin='lower', extent=(Qs[0][0], Qs[0][-1], Qs[2][0], Qs[2][-1]))
+    plt.colorbar()
+    plt.show()
+
+
