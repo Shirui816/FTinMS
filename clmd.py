@@ -1150,7 +1150,6 @@ class MDEngine:
         self.d_nlist_trigger.fill(0)
 
     def _execute_compute_forces(self, global_size):
-        # 参数排布非常壮观，严格按照内核逻辑分块，绝无任何冗余错乱！
         self.knl_compute_forces(
             self.queue, global_size, None,
             self.d_x.data, self.d_y.data, self.d_z.data,
