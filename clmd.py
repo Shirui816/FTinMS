@@ -1447,9 +1447,6 @@ class MDEngine:
         enqueue = cl.enqueue_nd_range_kernel
         queue = self.queue
 
-        # =======================================================
-        # 1. 动态绑定函数句柄与初始参数
-        # =======================================================
         if ensemble == "NVE":
             knl_step1 = self.knl_nve_step1
             knl_step2 = self.knl_nve_step2
