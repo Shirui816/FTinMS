@@ -612,14 +612,75 @@ class MDCodeGenerator:
         }
 
         // 2. NVT (Nose-Hoover)
+        
+        // ==========================================================
+        // 1. ke-reduction kernel
+        // ==========================================================
+        __kernel void calc_partial_ke(
+            __global const float* vx, __global const float* vy, __global const float* vz,
+            __global const float* mass, 
+            __global float* partial_ke, // output
+            __local float* local_ke,    // shared memory: local_size * sizeof(float)
+            int n_atoms) 
+        {
+            int gid = get_global_id(0);
+            int lid = get_local_id(0);
+            int group_id = get_group_id(0);
+            
+            // 1. calc ke
+            float ke = 0.0f;
+            if (gid < n_atoms) {
+                float v2 = vx[gid]*vx[gid] + vy[gid]*vy[gid] + vz[gid]*vz[gid];
+                ke = 0.5f * mass[gid] * v2;
+            }
+            local_ke[lid] = ke;
+            barrier(CLK_LOCAL_MEM_FENCE); // sync
+            
+            // 2. reduction
+            for (int offset = get_local_size(0) / 2; offset > 0; offset >>= 1) {
+                if (lid < offset) {
+                    local_ke[lid] += local_ke[lid + offset];
+                }
+                barrier(CLK_LOCAL_MEM_FENCE);
+            }
+            
+            // 3. into gpu mem
+            if (lid == 0) {
+                partial_ke[group_id] = local_ke[0];
+            }
+        }
+        
+        // ==========================================================
+        // 2. zeta
+        // ==========================================================
+        __kernel void update_zeta_kernel(
+            __global const float* partial_ke, 
+            int num_groups,
+            __global float* zeta_buf,
+            float target_ke,
+            float Q_inv,
+            float dt)
+        {
+            if (get_global_id(0) == 0) {
+                float total_ke = 0.0f;
+                for(int i = 0; i < num_groups; i++) {
+                    total_ke += partial_ke[i];
+                }
+                float current_zeta = zeta_buf[0];
+                zeta_buf[0] = current_zeta + (total_ke - target_ke) * Q_inv * dt;
+            }
+        }
+        
+    
         __kernel void nh_step1(
             __global float* x, __global float* y, __global float* z,
             __global float* vx, __global float* vy, __global float* vz,
             __global const float* fx, __global const float* fy, __global const float* fz,
-            __global const float* mass, const float dt, const float zeta,
+            __global const float* mass, const float dt, __global const float* zeta_buf,
             const float box_x, const float box_y, const float box_z
         )
         {
+            float zeta = zeta_buf[0];
             int i = get_global_id(0); float m_i = mass[i];
             vx[i] += (fx[i] / m_i - zeta * vx[i]) * 0.5f * dt;
             vy[i] += (fy[i] / m_i - zeta * vy[i]) * 0.5f * dt;
@@ -631,8 +692,9 @@ class MDCodeGenerator:
         }
         __kernel void nh_step2(__global float* vx, __global float* vy, __global float* vz,
             __global const float* fx, __global const float* fy, __global const float* fz,
-            __global const float* mass, const float dt, const float zeta
+            __global const float* mass, const float dt, __global const float* zeta_buf
         ) {
+            float zeta = zeta_buf[0];
             int i = get_global_id(0); float m_i = mass[i];
             vx[i] += (fx[i] / m_i - zeta * vx[i]) * 0.5f * dt;
             vy[i] += (fy[i] / m_i - zeta * vy[i]) * 0.5f * dt;
@@ -735,8 +797,11 @@ class MDEngine:
         self.internal_temp = self.target_temp * self.boltzmann
         self.seed = np.uint32(np.random.randint(0, 1000000))
         self.coulomb_const = np.float32(332.0637)
-        self.zeta = np.float32(1.0)  # Nose-Hoover zeta0
         self.tau = np.float32(0.5)  # Nose-Hoover time
+        self.thermo_group = np.ones(self.n_atoms)
+        self.n_dof = 3 * self.thermo_group.sum() - 3
+        self.target_ke = np.float32(0.5 * self.n_dof * self.boltzmann * self.target_temp)
+        self.Q_inv = np.float32(1.0 / (2.0 * self.target_ke * (self.tau ** 2)))
 
         volume = box_size[0] * box_size[1] * box_size[2]
         density = n_atoms / volume
@@ -888,6 +953,14 @@ class MDEngine:
         self.d_impr_D = cl_array.zeros(self.queue, self.n_atoms * self.max_imprs, dtype=np.int32)
         self.d_impr_k = cl_array.zeros(self.queue, self.n_atoms * self.max_imprs, dtype=np.float32)
         self.d_impr_t0 = cl_array.zeros(self.queue, self.n_atoms * self.max_imprs, dtype=np.float32)
+
+        # NH specific
+        self.nvt_local_size = 256
+        self.nvt_num_groups = int(np.ceil(self.n_atoms / self.nvt_local_size))
+        self.d_partial_ke = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE,
+                                      size=self.nvt_num_groups * 4)  # 4 bytes for float32
+        self.d_zeta = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR,
+                                hostbuf=np.array([0.0], dtype=np.float32))
 
     def load_initial_aos(self, pos, vel, mass, diameter, sigma, epsilon, charge, group_id):
         self.d_x.set(pos[:, 0].astype(np.float32))
@@ -1206,7 +1279,6 @@ class MDEngine:
             self.box_x, self.box_y, self.box_z, self.r_cut_sq, self.coulomb_const, self.n_atoms
         )
 
-
     # =========================================================================
     # Extracting per particle data
     # =========================================================================
@@ -1299,6 +1371,10 @@ class MDEngine:
         # Force at t=0
         self.rebuild_neighbor_list_on_gpu()
         self._execute_compute_forces()
+        knl_calc_partial_ke = self.prg.calc_partial_ke
+        knl_update_zeta = self.prg.update_zeta_kernel
+
+        t_start = time.perf_counter()
 
         for step in range(steps):
             # integrate step 1
@@ -1309,7 +1385,7 @@ class MDEngine:
             elif ensemble == "NVT":
                 self.knl_nh_step1(self.queue, global_size, local_size, self.d_x.data, self.d_y.data, self.d_z.data,
                                   self.d_vx.data, self.d_vy.data, self.d_vz.data, self.d_fx.data, self.d_fy.data,
-                                  self.d_fz.data, self.d_mass.data, self.dt, self.zeta, self.box_x, self.box_y,
+                                  self.d_fz.data, self.d_mass.data, self.dt, self.d_zeta, self.box_x, self.box_y,
                                   self.box_z)
             elif ensemble == "LANGEVIN":
                 self.knl_langevin_step1(self.queue, global_size, local_size, self.d_x.data, self.d_y.data,
@@ -1327,19 +1403,26 @@ class MDEngine:
 
             # ===== THERMOSTAT UPDATE (Nose-Hoover specific) =====
             if ensemble == "NVT":
-                #print(self._red_ke(self.d_mass, self.d_vx, self.d_vy, self.d_vz))
-                ke_half = float(self._red_ke(self.d_mass, self.d_vx, self.d_vy, self.d_vz).get())
-                t_curr = (2.0 * ke_half) / (3.0 * self.n_atoms * self.boltzmann)
-                zeta_dot = np.float32((t_curr - self.target_temp) / ((self.tau ** 2) * self.target_temp))
-                self.zeta += zeta_dot * self.dt
+                knl_calc_partial_ke(
+                    self.queue, global_size, (self.nvt_local_size,),
+                    self.d_vx.data, self.d_vy.data, self.d_vz.data, self.d_mass.data,
+                    self.d_partial_ke, cl.LocalMemory(self.nvt_local_size * 4),
+                    np.int32(self.n_atoms)
+                )
+                knl_update_zeta(
+                    self.queue, (1,), (1,), self.d_partial_ke, np.int32(self.nvt_num_groups), self.d_zeta,
+                    np.float32(self.target_ke), np.float32(self.Q_inv), np.float32(self.dt)
+                )
 
             # ===== integration step 2 =====
             if ensemble == "NVE":
                 self.knl_nve_step2(self.queue, global_size, local_size, self.d_vx.data, self.d_vy.data, self.d_vz.data,
                                    self.d_fx.data, self.d_fy.data, self.d_fz.data, self.d_mass.data, self.dt)
             elif ensemble == "NVT":
-                self.knl_nh_step2(self.queue, global_size, local_size, self.d_vx.data, self.d_vy.data, self.d_vz.data,
-                                  self.d_fx.data, self.d_fy.data, self.d_fz.data, self.d_mass.data, self.dt, self.zeta)
+                self.knl_nh_step2(
+                    self.queue, global_size, local_size, self.d_vx.data, self.d_vy.data, self.d_vz.data,
+                    self.d_fx.data, self.d_fy.data, self.d_fz.data, self.d_mass.data, self.dt, self.d_zeta
+                )
             elif ensemble == "LANGEVIN":
                 self.knl_langevin_step2(self.queue, global_size, local_size, self.d_vx.data, self.d_vy.data,
                                         self.d_vz.data,
@@ -1355,6 +1438,8 @@ class MDEngine:
                 )
 
         self.queue.finish()
+        t_end = time.perf_counter()
+        print(f"Finished TPS: {steps / (t_end - t_start):.2f}")
 
     def run_batch(self, steps, ensemble="LANGEVIN"):
         local_size = self.local_size
@@ -1362,6 +1447,9 @@ class MDEngine:
         enqueue = cl.enqueue_nd_range_kernel
         queue = self.queue
 
+        # =======================================================
+        # 1. 动态绑定函数句柄与初始参数
+        # =======================================================
         if ensemble == "NVE":
             knl_step1 = self.knl_nve_step1
             knl_step2 = self.knl_nve_step2
@@ -1372,23 +1460,51 @@ class MDEngine:
                                np.float32(self.box_x), np.float32(self.box_y), np.float32(self.box_z))
             knl_step2.set_args(
                 self.d_vx.data, self.d_vy.data, self.d_vz.data,
-                self.d_fx.data, self.d_fy.data, self.d_fz.data, self.d_mass.data, self.dt
+                self.d_fx.data, self.d_fy.data, self.d_fz.data, self.d_mass.data, np.float32(self.dt)
             )
         elif ensemble == "LANGEVIN":
             knl_step1 = self.knl_langevin_step1
             knl_step2 = self.knl_langevin_step2
             knl_step1.set_args(self.d_x.data, self.d_y.data, self.d_z.data,
                                self.d_vx.data, self.d_vy.data, self.d_vz.data, self.d_fx.data, self.d_fy.data,
-                               self.d_fz.data, self.d_mass.data, self.dt, self.gamma, self.internal_temp,
-                               self.seed, np.int32(0), self.box_x, self.box_y, self.box_z)
+                               self.d_fz.data, self.d_mass.data, np.float32(self.dt), np.float32(self.gamma),
+                               np.float32(self.internal_temp), np.int32(self.seed), np.int32(0),
+                               np.float32(self.box_x), np.float32(self.box_y), np.float32(self.box_z))
             knl_step2.set_args(self.d_vx.data, self.d_vy.data, self.d_vz.data,
-                               self.d_fx.data, self.d_fy.data, self.d_fz.data, self.d_mass.data, self.dt,
-                               self.gamma, self.internal_temp, self.seed, np.int32(0))
+                               self.d_fx.data, self.d_fy.data, self.d_fz.data, self.d_mass.data, np.float32(self.dt),
+                               np.float32(self.gamma), np.float32(self.internal_temp), np.int32(self.seed), np.int32(0))
+        elif ensemble == "NVT":
+            knl_calc_partial_ke = self.prg.calc_partial_ke
+            knl_update_zeta = self.prg.update_zeta_kernel
+            knl_step2 = self.knl_nh_step2
+            knl_step1 = self.knl_nh_step1
+
+            knl_calc_partial_ke.set_args(
+                self.d_vx.data, self.d_vy.data, self.d_vz.data, self.d_mass.data,
+                self.d_partial_ke, cl.LocalMemory(self.nvt_local_size * 4),
+                np.int32(self.n_atoms)
+            )
+            knl_update_zeta.set_args(
+                self.d_partial_ke, np.int32(self.nvt_num_groups), self.d_zeta,
+                np.float32(self.target_ke), np.float32(self.Q_inv), np.float32(self.dt)
+            )
+            knl_step2.set_args(
+                self.d_vx.data, self.d_vy.data, self.d_vz.data,
+                self.d_fx.data, self.d_fy.data, self.d_fz.data,
+                self.d_mass.data, np.float32(self.dt), self.d_zeta,
+            )
+            knl_step1.set_args(
+                self.d_x.data, self.d_y.data, self.d_z.data,
+                self.d_vx.data, self.d_vy.data, self.d_vz.data, self.d_fx.data, self.d_fy.data,
+                self.d_fz.data, self.d_mass.data, self.dt, self.d_zeta, self.box_x, self.box_y,
+                self.box_z
+            )
 
         self.knl_compute_forces.set_args(
             self.d_x.data, self.d_y.data, self.d_z.data,
             self.d_fx.data, self.d_fy.data, self.d_fz.data,
-            self.d_x_ref.data, self.d_y_ref.data, self.d_z_ref.data, self.d_nlist_trigger.data, self.skin_sq,
+            self.d_x_ref.data, self.d_y_ref.data, self.d_z_ref.data, self.d_nlist_trigger.data,
+            np.float32(self.skin_sq),
             self.d_original_id.data, self.d_reverse_map.data,
             self.d_diameter.data, self.d_sigma.data, self.d_epsilon.data, self.d_charge.data, self.d_group_id.data,
             self.d_nlist.data, self.d_counts.data,
@@ -1412,21 +1528,24 @@ class MDEngine:
             self.d_vir_all.data, self.d_vir_vdw.data, self.d_vir_coul.data, self.d_vir_bond.data, self.d_vir_angle.data,
             self.d_vir_dihe.data, self.d_vir_impr.data,
             # Constants
-            self.max_neighbors, self.max_excl, self.max_bonds, self.max_angles, self.max_dihes, self.max_imprs,
-            self.box_x, self.box_y, self.box_z, self.r_cut_sq, self.coulomb_const, self.n_atoms
+            np.int32(self.max_neighbors), np.int32(self.max_excl), np.int32(self.max_bonds), np.int32(self.max_angles),
+            np.int32(self.max_dihes), np.int32(self.max_imprs),
+            np.float32(self.box_x), np.float32(self.box_y), np.float32(self.box_z), np.float32(self.r_cut_sq),
+            np.float32(self.coulomb_const), np.int32(self.n_atoms)
         )
 
         t_start = time.perf_counter()
         current_step = 0
-        rebuild_freq = 10
-        min_rebuild_freq = 5
+        rebuild_freq = 50
+        min_rebuild_freq = 10
         max_rebuild_freq = 200
+        d_step = 0
 
         self.rebuild_neighbor_list_on_gpu()
-        d_step = 0
+
         while current_step < steps:
             run_steps = min(rebuild_freq, steps - current_step)
-            # self.rebuild_neighbor_list_on_gpu()
+
             self.knl_compute_forces.set_arg(18, self.d_nlist.data)
             self.knl_compute_forces.set_arg(6, self.d_x_ref.data)
             self.knl_compute_forces.set_arg(7, self.d_y_ref.data)
@@ -1441,24 +1560,28 @@ class MDEngine:
                     knl_step2.set_arg(11, np.int32(current_step))
                 enqueue(queue, knl_step1, global_size, local_size)
                 enqueue(queue, self.knl_compute_forces, global_size, local_size)
+                if ensemble == "NVT":
+                    enqueue(queue, knl_calc_partial_ke, global_size, (self.nvt_local_size,))
+                    enqueue(queue, knl_update_zeta, (1,), (1,))
                 enqueue(queue, knl_step2, global_size, local_size)
             queue.flush()
+
             trigger_status = self.d_nlist_trigger.get()[0]
+
             if trigger_status > 0:
-                rebuild_freq = max(min_rebuild_freq, rebuild_freq - 20)
+                rebuild_freq = max(min_rebuild_freq, rebuild_freq - 10)
                 self.rebuild_neighbor_list_on_gpu()
             else:
                 rebuild_freq = min(max_rebuild_freq, rebuild_freq + 1)
-            if d_step > 1000:
+
+            if d_step >= 10000:
                 thermo = self.compute_thermo()
                 print(
                     f"[{ensemble}] Step {current_step}: T={thermo['Temperature']:.2f}K, "
                     f"P={thermo['Pressure_atm']:.2f}atm, E_pot={thermo['Potential_Energy']:.4f}, "
-                    f"E_tot={thermo['Total_Energy']:.4f}"
+                    f"E_tot={thermo['Total_Energy']:.4f} | Freq: {rebuild_freq}"
                 )
                 d_step = 0
-
-
         queue.finish()
         t_end = time.perf_counter()
 
@@ -1521,5 +1644,5 @@ if __name__ == "__main__":
 
     print("Running...")
     Nstep = 50000
-    engine.run_batch(steps=Nstep, ensemble="LANGEVIN")
+    engine.run_batch(steps=Nstep, ensemble="NVT")
     print(f"Avg steps per nl update: {Nstep / engine._num_nl_update:.2f}")
