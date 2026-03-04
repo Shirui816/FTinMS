@@ -67,7 +67,8 @@ class MDCodeGenerator:
         }
 
         __kernel void calc_cell_hash(
-            __global const float* restrict x, __global const float* restrict y, __global const float* restrict z,
+            __global const float* restrict x, __global const float* restrict y,
+            __global const float* restrict z,
             __global int* restrict cell_hash, __global int* restrict indices,
             const int grid_dim_x, const int grid_dim_y, const int grid_dim_z,
             const float box_x, const float box_y, const float box_z,
@@ -429,7 +430,8 @@ class MDCodeGenerator:
         # =========================================================================
         self.thermo_code = """
         inline void calc_particle_thermo(
-            float* vir_vdw, float* vir_coul, float* vir_bond, float* vir_angle, float* vir_dihe, float* vir_impr, float* vir_all
+            float* vir_vdw, float* vir_coul, float* vir_bond, float* vir_angle,
+            float* vir_dihe, float* vir_impr, float* vir_all
         ) {
             for (int d = 0; d < 6; ++d) {
                 vir_all[d] = vir_vdw[d] + vir_coul[d] + vir_bond[d] + vir_angle[d] + vir_dihe[d] + vir_impr[d];
@@ -554,8 +556,8 @@ class MDCodeGenerator:
             fx_impr_arr[i] = fx_impr; fy_impr_arr[i] = fy_impr; fz_impr_arr[i] = fz_impr;
 
             u_tot[i] = e_vdw + e_coul + e_bond + e_angle + e_dihe + e_impr;
-            //u_vdw_arr[i] = e_vdw; u_coul_arr[i] = e_coul; u_bond_arr[i] = e_bond;
-            //u_angle_arr[i] = e_angle; u_dihe_arr[i] = e_dihe; u_impr_arr[i] = e_impr;
+            u_vdw_arr[i] = e_vdw; u_coul_arr[i] = e_coul; u_bond_arr[i] = e_bond;
+            u_angle_arr[i] = e_angle; u_dihe_arr[i] = e_dihe; u_impr_arr[i] = e_impr;
 
             float vir_all[6] = {0};
             calc_particle_thermo(v_vdw, v_coul, v_bond, v_angle, v_dihe, v_impr, vir_all);
@@ -671,7 +673,6 @@ class MDCodeGenerator:
             }
         }
         
-    
         __kernel void nh_step1(
             __global float* x, __global float* y, __global float* z,
             __global float* vx, __global float* vy, __global float* vz,
@@ -954,7 +955,7 @@ class MDEngine:
         self.d_impr_k = cl_array.zeros(self.queue, self.n_atoms * self.max_imprs, dtype=np.float32)
         self.d_impr_t0 = cl_array.zeros(self.queue, self.n_atoms * self.max_imprs, dtype=np.float32)
 
-        # NH specific
+        # NH specific, for reduction-add on kernel
         self.nvt_local_size = 256
         self.nvt_num_groups = int(np.ceil(self.n_atoms / self.nvt_local_size))
         self.d_partial_ke = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE,
@@ -1615,7 +1616,7 @@ if __name__ == "__main__":
     dihes = [[0, 1, 2, 3, 1.5, 0.0, 0.0, 0.0]]
     excls = [[0, 1, 0.0, 0.0], [1, 2, 0.0, 0.0], [0, 2, 0.0, 0.0], [2, 3, 0.0, 0.0], [1, 3, 0.0, 0.0], [0, 3, 0.5, 0.5]]
 
-    engine = MDEngine(n_atoms=N_ATOMS, box_size=BOX_SIZE, r_cut=2 * 2 ** (1 / 6.), skin=0.3, dt=0.001, temperature=120)
+    engine = MDEngine(n_atoms=N_ATOMS, box_size=BOX_SIZE, r_cut=2 * 2 ** (1 / 6.), skin=0.25, dt=0.001, temperature=120)
 
     # API OF PAIRWISE FORCE INJECTION
     custom_force_code = """
