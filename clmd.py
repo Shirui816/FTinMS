@@ -1,4 +1,5 @@
 import os
+import time
 import warnings
 
 import numpy as np
@@ -7,11 +8,19 @@ import pyopencl.array as cl_array
 from pyopencl.algorithm import RadixSort
 from pyopencl.reduction import ReductionKernel
 
+platforms = cl.get_platforms()
+platform = platforms[0]
+gpu_devices = platform.get_devices(device_type=cl.device_type.GPU)
+
+if not gpu_devices:
+    print("NO GPU FOUND")
+    exit()
+
+target_gpu = gpu_devices[0]
+print(f"GPU: {target_gpu.name}")
+
 os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
 warnings.filterwarnings("ignore", category=cl.CompilerWarning)
-
-__doc__ = r'''A simple MD example in opencl.
-'''
 
 
 class MDCodeGenerator:
@@ -134,7 +143,8 @@ class MDCodeGenerator:
                             float dy_vec = apply_pbc(yi - y[j], box_y);
                             float dz_vec = apply_pbc(zi - z[j], box_z);
                             if (dx_vec*dx_vec + dy_vec*dy_vec + dz_vec*dz_vec < r_list_sq) {
-                                if (count < max_neighbors) nlist[base_idx + count] = j; 
+                                //if (count < max_neighbors) nlist[base_idx + count] = j; 
+                                if (count < max_neighbors) nlist[count * n_atoms + i] = j;
                                 count++;
                             }
                         }
@@ -176,13 +186,14 @@ class MDCodeGenerator:
             __global const float* restrict x_in, __global const float* restrict y_in, __global const float* restrict z_in,
             __global const float* restrict sigma, __global const float* restrict epsilon, __global const float* restrict charge,
             __global const float* restrict diameter, __global const int* restrict group_id, 
-            float box_x, float box_y, float box_z, float r_cut_sq, float coulomb_const,
+            float box_x, float box_y, float box_z, float r_cut_sq, float coulomb_const, const int n_atoms,
             float* fx_vdw, float* fy_vdw, float* fz_vdw, float* fx_coul, float* fy_coul, float* fz_coul, 
             float* u_vdw, float* u_coul, float* vir_vdw, float* vir_coul
         ) {
             int n_excl = excl_count[orig_i];
             for (int k = 0; k < count; ++k) {
-                int j = nlist[i * max_neighbors + k];
+                //int j = nlist[i * max_neighbors + k];
+                int j = nlist[k * n_atoms + i];
                 int orig_j = original_id[j]; int gj = group_id[j];
 
                 float dx = apply_pbc(xi - x_in[j], box_x); float dy = apply_pbc(yi - y_in[j], box_y); float dz = apply_pbc(zi - z_in[j], box_z);
@@ -476,11 +487,11 @@ class MDCodeGenerator:
             // 7. control params
             const int max_neighbors, const int max_excl, const int max_bonds, const int max_angles, const int max_dihes,
             const int max_imprs, const float box_x, const float box_y, const float box_z, const float r_cut_sq,
-            const float coulomb_const
+            const float coulomb_const, const int n_atoms
         )
         {
             int i = get_global_id(0);
-            if (i >= get_global_size(0)) return;
+            if (i >= n_atoms) return;
 
             float xi = x_in[i], yi = y_in[i], zi = z_in[i];
             int orig_i = original_id[i]; int gi = group_id[i]; float d_i = diameter[i];
@@ -502,7 +513,7 @@ class MDCodeGenerator:
                 orig_i, original_id, excl_count, excl_partners, excl_scale_vdw, excl_scale_coul, max_excl,
                 i, gi, nlist_counts[i], max_neighbors, nlist, xi, yi, zi, sigma[i], epsilon[i], charge[i],
                 d_i, x_in, y_in, z_in, sigma, epsilon, charge, diameter, group_id, box_x, box_y, box_z,
-                r_cut_sq, coulomb_const, &fx_vdw, &fy_vdw, &fz_vdw, &fx_coul, &fy_coul, &fz_coul, &e_vdw,
+                r_cut_sq, coulomb_const, n_atoms, &fx_vdw, &fy_vdw, &fz_vdw, &fx_coul, &fy_coul, &fz_coul, &e_vdw,
                 &e_coul, v_vdw, v_coul
             );
             compute_bonds(
@@ -525,7 +536,7 @@ class MDCodeGenerator:
             // INJECT_SINGLE, use orig_i, gi, xi, yi, zi, box_x, box_y, box_z
             // modify fx,y,z_custom
             float fx_custom = 0.0f, fy_custom = 0.0f, fz_custom = 0.0f;
-            
+
             {INJECT_SINGLE_PARTICLE_FORCE}
 
             // Accumulate total force for integrator
@@ -543,8 +554,8 @@ class MDCodeGenerator:
             fx_impr_arr[i] = fx_impr; fy_impr_arr[i] = fy_impr; fz_impr_arr[i] = fz_impr;
 
             u_tot[i] = e_vdw + e_coul + e_bond + e_angle + e_dihe + e_impr;
-            u_vdw_arr[i] = e_vdw; u_coul_arr[i] = e_coul; u_bond_arr[i] = e_bond;
-            u_angle_arr[i] = e_angle; u_dihe_arr[i] = e_dihe; u_impr_arr[i] = e_impr;
+            //u_vdw_arr[i] = e_vdw; u_coul_arr[i] = e_coul; u_bond_arr[i] = e_bond;
+            //u_angle_arr[i] = e_angle; u_dihe_arr[i] = e_dihe; u_impr_arr[i] = e_impr;
 
             float vir_all[6] = {0};
             calc_particle_thermo(v_vdw, v_coul, v_bond, v_angle, v_dihe, v_impr, vir_all);
@@ -559,8 +570,9 @@ class MDCodeGenerator:
             float dx_ref = apply_pbc(xi - x_ref[i], box_x);
             float dy_ref = apply_pbc(yi - y_ref[i], box_y);
             float dz_ref = apply_pbc(zi - z_ref[i], box_z);
-            if (dx_ref*dx_ref + dy_ref*dy_ref + dz_ref*dz_ref >= skin_sq) {
-                atomic_xchg((volatile __global int*)nlist_trigger, 1);
+            if (dx_ref*dx_ref + dy_ref*dy_ref + dz_ref*dz_ref > skin_sq) {
+                //atomic_xchg((volatile __global int*)nlist_trigger, 1);
+                nlist_trigger[0] = 1;
             }
         }
         """
@@ -686,7 +698,8 @@ class MDCodeGenerator:
 
 
 class MDEngine:
-    def __init__(self, n_atoms, box_size, r_cut=2.5, skin=0.5, dt=0.002, safety_factor=1.2, temperature=120):
+    def __init__(self, n_atoms, box_size, r_cut=2.5, skin=0.5, dt=0.002, safety_factor=1.2, temperature=120,
+                 local_size=256):
         r"""
         :param n_atoms: Number of atoms
         :param box_size: list of box dimensions
@@ -696,11 +709,13 @@ class MDEngine:
         :param safety_factor: to estimate max_neighbor: \rho * V_cut * safety_factor
         :param temperature: 120K ~ 0.24 kcal/mol
         """
-        self.ctx = cl.create_some_context(interactive=False)
-        self.queue = cl.CommandQueue(self.ctx)
+        self.ctx = cl.Context([target_gpu])  # cl.create_some_context(interactive=False)
+        self.queue = cl.CommandQueue(self.ctx, properties=cl.command_queue_properties.PROFILING_ENABLE)
         self.codegen = MDCodeGenerator()
 
         self.n_atoms = np.int32(n_atoms)
+        self.local_size = (local_size,)
+        self.global_size = (int(np.ceil(self.n_atoms / self.local_size[0]) * self.local_size[0]),)
         self.dt = np.float32(dt)
         self.box_x = np.float32(box_size[0])
         self.box_y = np.float32(box_size[1])
@@ -709,7 +724,7 @@ class MDEngine:
         self.r_cut = np.float32(r_cut)
         self.r_cut_sq = np.float32(r_cut * r_cut)
         self.skin = np.float32(skin)
-        self.skin_sq = np.float32((skin / 2.0) ** 2)
+        self.skin_sq = np.float32((skin / 2) ** 2)
         self.r_list = np.float32(r_cut + skin)
         self.r_list_sq = np.float32(self.r_list * self.r_list)
 
@@ -726,7 +741,7 @@ class MDEngine:
         volume = box_size[0] * box_size[1] * box_size[2]
         density = n_atoms / volume
         search_vol = (4.0 / 3.0) * np.pi * (self.r_list ** 3)
-        self.max_neighbors = np.int32(max(100, int(np.ceil(density * search_vol * safety_factor))))
+        self.max_neighbors = np.int32(max(90, int(np.ceil(density * search_vol * safety_factor))))
 
         self.max_excl = np.int32(32)
         self.max_bonds = np.int32(6)
@@ -1025,6 +1040,13 @@ class MDEngine:
         self.d_impr_t0.set(t0s)
 
     def compile(self):
+        build_options = [
+            '-cl-mad-enable',
+            '-cl-fast-relaxed-math',
+            '-cl-no-signed-zeros',
+            '-cl-strict-aliasing'
+        ]
+        build_options = []
         source = self.codegen.generate()
         self.prg = cl.Program(self.ctx, source).build()
         self.knl_calc_cell_hash = self.prg.calc_cell_hash
@@ -1092,15 +1114,15 @@ class MDEngine:
         )
 
     def rebuild_neighbor_list_on_gpu(self):
-        global_size = (int(self.n_atoms),)
         self._num_nl_update += 1
 
-        self.knl_calc_cell_hash(self.queue, global_size, None, self.d_x.data, self.d_y.data, self.d_z.data,
+        self.knl_calc_cell_hash(self.queue, self.global_size, self.local_size, self.d_x.data, self.d_y.data,
+                                self.d_z.data,
                                 self.d_hash.data, self.d_indices.data, self.grid_dim[0], self.grid_dim[1],
                                 self.grid_dim[2], self.box_x, self.box_y, self.box_z, self.n_atoms)
         (sorted_hash, sorted_indices), _ = self.radix_sort(self.d_hash, self.d_indices)
 
-        self.knl_permute(self.queue, global_size, None, sorted_indices.data,
+        self.knl_permute(self.queue, self.global_size, self.local_size, sorted_indices.data,
                          self.d_x.data, self.d_x_alt.data, self.d_y.data, self.d_y_alt.data, self.d_z.data,
                          self.d_z_alt.data,
                          self.d_vx.data, self.d_vx_alt.data, self.d_vy.data, self.d_vy_alt.data, self.d_vz.data,
@@ -1126,16 +1148,18 @@ class MDEngine:
         self.d_group_id, self.d_group_id_alt = self.d_group_id_alt, self.d_group_id
         self.d_original_id, self.d_original_id_alt = self.d_original_id_alt, self.d_original_id
 
-        self.knl_build_reverse_map(self.queue, global_size, None, self.d_original_id.data, self.d_reverse_map.data,
+        self.knl_build_reverse_map(self.queue, self.global_size, self.local_size, self.d_original_id.data,
+                                   self.d_reverse_map.data,
                                    self.n_atoms)
 
         while True:
             self.d_cell_start.fill(0)
             self.d_cell_end.fill(0)
-            self.knl_build_bounds(self.queue, global_size, None, sorted_hash.data, self.d_cell_start.data,
+            self.knl_build_bounds(self.queue, self.global_size, self.local_size, sorted_hash.data,
+                                  self.d_cell_start.data,
                                   self.d_cell_end.data, self.n_atoms)
             self.knl_build_verlet(
-                self.queue, global_size, None, self.d_x.data, self.d_y.data, self.d_z.data,
+                self.queue, self.global_size, self.local_size, self.d_x.data, self.d_y.data, self.d_z.data,
                 self.d_x_ref.data, self.d_y_ref.data, self.d_z_ref.data, self.d_cell_start.data, self.d_cell_end.data,
                 self.d_nlist.data, self.d_counts.data, self.grid_dim[0], self.grid_dim[1], self.grid_dim[2],
                 self.cell_size, self.r_list_sq, self.max_neighbors, self.n_atoms, self.box_x, self.box_y, self.box_z
@@ -1149,9 +1173,9 @@ class MDEngine:
 
         self.d_nlist_trigger.fill(0)
 
-    def _execute_compute_forces(self, global_size):
+    def _execute_compute_forces(self):
         self.knl_compute_forces(
-            self.queue, global_size, None,
+            self.queue, self.global_size, self.local_size,
             self.d_x.data, self.d_y.data, self.d_z.data,
             self.d_fx.data, self.d_fy.data, self.d_fz.data,
             self.d_x_ref.data, self.d_y_ref.data, self.d_z_ref.data, self.d_nlist_trigger.data, self.skin_sq,
@@ -1179,8 +1203,9 @@ class MDEngine:
             self.d_vir_dihe.data, self.d_vir_impr.data,
             # Constants
             self.max_neighbors, self.max_excl, self.max_bonds, self.max_angles, self.max_dihes, self.max_imprs,
-            self.box_x, self.box_y, self.box_z, self.r_cut_sq, self.coulomb_const
+            self.box_x, self.box_y, self.box_z, self.r_cut_sq, self.coulomb_const, self.n_atoms
         )
+
 
     # =========================================================================
     # Extracting per particle data
@@ -1239,7 +1264,8 @@ class MDEngine:
         for orig_id in range(num_particles):
             gpu_idx = restore_indices[orig_id]
             count = counts_h[gpu_idx]
-            raw_neighbors = nlist_h[gpu_idx * self.max_neighbors: gpu_idx * self.max_neighbors + count]
+            # raw_neighbors = nlist_h[gpu_idx * self.max_neighbors: gpu_idx * self.max_neighbors + count]
+            raw_neighbors = [nlist_h[k * self.n_atoms + gpu_idx] for k in range(count)]
             real_neighbors = [int(id_h[n]) for n in raw_neighbors]
             # print(f"Original Atom {orig_id} (GPU addr: {gpu_idx}) has {count} neighbors -> {real_neighbors}")
             xyz[orig_id] = [X[gpu_idx], Y[gpu_idx], Z[gpu_idx]]
@@ -1266,25 +1292,28 @@ class MDEngine:
         }
 
     def run(self, steps, ensemble="NVT"):
-        global_size = (int(self.n_atoms),)
+        local_size = self.local_size
+        # global_size = (int(self.n_atoms),)
+        global_size = self.global_size  # (int(np.ceil(self.n_atoms / local_size[0]) * local_size[0]),)
 
         # Force at t=0
         self.rebuild_neighbor_list_on_gpu()
-        self._execute_compute_forces(global_size)
+        self._execute_compute_forces()
 
         for step in range(steps):
             # integrate step 1
             if ensemble == "NVE":
-                self.knl_nve_step1(self.queue, global_size, None, self.d_x.data, self.d_y.data, self.d_z.data,
+                self.knl_nve_step1(self.queue, global_size, local_size, self.d_x.data, self.d_y.data, self.d_z.data,
                                    self.d_vx.data, self.d_vy.data, self.d_vz.data, self.d_fx.data, self.d_fy.data,
                                    self.d_fz.data, self.d_mass.data, self.dt, self.box_x, self.box_y, self.box_z)
             elif ensemble == "NVT":
-                self.knl_nh_step1(self.queue, global_size, None, self.d_x.data, self.d_y.data, self.d_z.data,
+                self.knl_nh_step1(self.queue, global_size, local_size, self.d_x.data, self.d_y.data, self.d_z.data,
                                   self.d_vx.data, self.d_vy.data, self.d_vz.data, self.d_fx.data, self.d_fy.data,
                                   self.d_fz.data, self.d_mass.data, self.dt, self.zeta, self.box_x, self.box_y,
                                   self.box_z)
             elif ensemble == "LANGEVIN":
-                self.knl_langevin_step1(self.queue, global_size, None, self.d_x.data, self.d_y.data, self.d_z.data,
+                self.knl_langevin_step1(self.queue, global_size, local_size, self.d_x.data, self.d_y.data,
+                                        self.d_z.data,
                                         self.d_vx.data, self.d_vy.data, self.d_vz.data, self.d_fx.data, self.d_fy.data,
                                         self.d_fz.data, self.d_mass.data, self.dt, self.gamma, self.internal_temp,
                                         self.seed, np.int32(step), self.box_x, self.box_y, self.box_z)
@@ -1294,10 +1323,11 @@ class MDEngine:
                 self.rebuild_neighbor_list_on_gpu()
 
             # ===== FORCE EVALUATION =====
-            self._execute_compute_forces(global_size)
+            self._execute_compute_forces()
 
             # ===== THERMOSTAT UPDATE (Nose-Hoover specific) =====
             if ensemble == "NVT":
+                #print(self._red_ke(self.d_mass, self.d_vx, self.d_vy, self.d_vz))
                 ke_half = float(self._red_ke(self.d_mass, self.d_vx, self.d_vy, self.d_vz).get())
                 t_curr = (2.0 * ke_half) / (3.0 * self.n_atoms * self.boltzmann)
                 zeta_dot = np.float32((t_curr - self.target_temp) / ((self.tau ** 2) * self.target_temp))
@@ -1305,13 +1335,14 @@ class MDEngine:
 
             # ===== integration step 2 =====
             if ensemble == "NVE":
-                self.knl_nve_step2(self.queue, global_size, None, self.d_vx.data, self.d_vy.data, self.d_vz.data,
+                self.knl_nve_step2(self.queue, global_size, local_size, self.d_vx.data, self.d_vy.data, self.d_vz.data,
                                    self.d_fx.data, self.d_fy.data, self.d_fz.data, self.d_mass.data, self.dt)
             elif ensemble == "NVT":
-                self.knl_nh_step2(self.queue, global_size, None, self.d_vx.data, self.d_vy.data, self.d_vz.data,
+                self.knl_nh_step2(self.queue, global_size, local_size, self.d_vx.data, self.d_vy.data, self.d_vz.data,
                                   self.d_fx.data, self.d_fy.data, self.d_fz.data, self.d_mass.data, self.dt, self.zeta)
             elif ensemble == "LANGEVIN":
-                self.knl_langevin_step2(self.queue, global_size, None, self.d_vx.data, self.d_vy.data, self.d_vz.data,
+                self.knl_langevin_step2(self.queue, global_size, local_size, self.d_vx.data, self.d_vy.data,
+                                        self.d_vz.data,
                                         self.d_fx.data, self.d_fy.data, self.d_fz.data, self.d_mass.data, self.dt,
                                         self.gamma, self.internal_temp, self.seed, np.int32(step))
 
@@ -1325,22 +1356,125 @@ class MDEngine:
 
         self.queue.finish()
 
+    def run_batch(self, steps, ensemble="LANGEVIN"):
+        local_size = self.local_size
+        global_size = self.global_size
+        enqueue = cl.enqueue_nd_range_kernel
+        queue = self.queue
+
+        if ensemble == "NVE":
+            knl_step1 = self.knl_nve_step1
+            knl_step2 = self.knl_nve_step2
+            knl_step1.set_args(self.d_x.data, self.d_y.data, self.d_z.data,
+                               self.d_vx.data, self.d_vy.data, self.d_vz.data,
+                               self.d_fx.data, self.d_fy.data, self.d_fz.data,
+                               self.d_mass.data, np.float32(self.dt),
+                               np.float32(self.box_x), np.float32(self.box_y), np.float32(self.box_z))
+            knl_step2.set_args(
+                self.d_vx.data, self.d_vy.data, self.d_vz.data,
+                self.d_fx.data, self.d_fy.data, self.d_fz.data, self.d_mass.data, self.dt
+            )
+        elif ensemble == "LANGEVIN":
+            knl_step1 = self.knl_langevin_step1
+            knl_step2 = self.knl_langevin_step2
+            knl_step1.set_args(self.d_x.data, self.d_y.data, self.d_z.data,
+                               self.d_vx.data, self.d_vy.data, self.d_vz.data, self.d_fx.data, self.d_fy.data,
+                               self.d_fz.data, self.d_mass.data, self.dt, self.gamma, self.internal_temp,
+                               self.seed, np.int32(0), self.box_x, self.box_y, self.box_z)
+            knl_step2.set_args(self.d_vx.data, self.d_vy.data, self.d_vz.data,
+                               self.d_fx.data, self.d_fy.data, self.d_fz.data, self.d_mass.data, self.dt,
+                               self.gamma, self.internal_temp, self.seed, np.int32(0))
+
+        self.knl_compute_forces.set_args(
+            self.d_x.data, self.d_y.data, self.d_z.data,
+            self.d_fx.data, self.d_fy.data, self.d_fz.data,
+            self.d_x_ref.data, self.d_y_ref.data, self.d_z_ref.data, self.d_nlist_trigger.data, self.skin_sq,
+            self.d_original_id.data, self.d_reverse_map.data,
+            self.d_diameter.data, self.d_sigma.data, self.d_epsilon.data, self.d_charge.data, self.d_group_id.data,
+            self.d_nlist.data, self.d_counts.data,
+            self.d_excl_count.data, self.d_excl_partners.data, self.d_excl_scale_vdw.data, self.d_excl_scale_coul.data,
+            self.d_bond_count.data, self.d_bond_partners.data, self.d_bond_k.data, self.d_bond_r0.data,
+            self.d_angle_count.data, self.d_angle_A.data, self.d_angle_B.data, self.d_angle_C.data, self.d_angle_k.data,
+            self.d_angle_t0.data,
+            self.d_dihe_count.data, self.d_dihe_A.data, self.d_dihe_B.data, self.d_dihe_C.data, self.d_dihe_D.data,
+            self.d_dihe_k1.data, self.d_dihe_k2.data, self.d_dihe_k3.data, self.d_dihe_k4.data,
+            self.d_impr_count.data, self.d_impr_A.data, self.d_impr_B.data, self.d_impr_C.data, self.d_impr_D.data,
+            self.d_impr_k.data, self.d_impr_t0.data,
+            # Outputs
+            self.d_u_tot.data, self.d_u_vdw.data, self.d_u_coul.data, self.d_u_bond.data, self.d_u_angle.data,
+            self.d_u_dihe.data, self.d_u_impr.data,
+            self.d_fx_vdw.data, self.d_fy_vdw.data, self.d_fz_vdw.data,
+            self.d_fx_coul.data, self.d_fy_coul.data, self.d_fz_coul.data,
+            self.d_fx_bond.data, self.d_fy_bond.data, self.d_fz_bond.data,
+            self.d_fx_angle.data, self.d_fy_angle.data, self.d_fz_angle.data,
+            self.d_fx_dihe.data, self.d_fy_dihe.data, self.d_fz_dihe.data,
+            self.d_fx_impr.data, self.d_fy_impr.data, self.d_fz_impr.data,
+            self.d_vir_all.data, self.d_vir_vdw.data, self.d_vir_coul.data, self.d_vir_bond.data, self.d_vir_angle.data,
+            self.d_vir_dihe.data, self.d_vir_impr.data,
+            # Constants
+            self.max_neighbors, self.max_excl, self.max_bonds, self.max_angles, self.max_dihes, self.max_imprs,
+            self.box_x, self.box_y, self.box_z, self.r_cut_sq, self.coulomb_const, self.n_atoms
+        )
+
+        t_start = time.perf_counter()
+        current_step = 0
+        rebuild_freq = 10
+        min_rebuild_freq = 5
+        max_rebuild_freq = 200
+
+        self.rebuild_neighbor_list_on_gpu()
+        d_step = 0
+        while current_step < steps:
+            run_steps = min(rebuild_freq, steps - current_step)
+            # self.rebuild_neighbor_list_on_gpu()
+            self.knl_compute_forces.set_arg(18, self.d_nlist.data)
+            self.knl_compute_forces.set_arg(6, self.d_x_ref.data)
+            self.knl_compute_forces.set_arg(7, self.d_y_ref.data)
+            self.knl_compute_forces.set_arg(8, self.d_z_ref.data)
+            self.knl_compute_forces.set_arg(9, self.d_nlist_trigger.data)
+
+            for i in range(run_steps):
+                current_step += 1
+                d_step += 1
+                if ensemble == "LANGEVIN":
+                    knl_step1.set_arg(14, np.int32(current_step))
+                    knl_step2.set_arg(11, np.int32(current_step))
+                enqueue(queue, knl_step1, global_size, local_size)
+                enqueue(queue, self.knl_compute_forces, global_size, local_size)
+                enqueue(queue, knl_step2, global_size, local_size)
+            queue.flush()
+            trigger_status = self.d_nlist_trigger.get()[0]
+            if trigger_status > 0:
+                rebuild_freq = max(min_rebuild_freq, rebuild_freq - 20)
+                self.rebuild_neighbor_list_on_gpu()
+            else:
+                rebuild_freq = min(max_rebuild_freq, rebuild_freq + 1)
+            if d_step > 1000:
+                thermo = self.compute_thermo()
+                print(
+                    f"[{ensemble}] Step {current_step}: T={thermo['Temperature']:.2f}K, "
+                    f"P={thermo['Pressure_atm']:.2f}atm, E_pot={thermo['Potential_Energy']:.4f}, "
+                    f"E_tot={thermo['Total_Energy']:.4f}"
+                )
+                d_step = 0
+
+
+        queue.finish()
+        t_end = time.perf_counter()
+
+        print(f"Finished TPS: {steps / (t_end - t_start):.2f}")
+
 
 def generate_cubic_lattice(size=5, spacing=1.0):
     axis = np.arange(0, size * spacing, spacing)
     x, y, z = np.meshgrid(axis, axis, axis, indexing='ij')
-
     coords = np.stack((x, y, z), axis=-1).reshape(-1, 3)
-
     return coords
 
 
 if __name__ == "__main__":
-    import time
-
     BOX_SIZE = [50.0, 50.0, 50.0]
-    # CG system
-    pos_aos = generate_cubic_lattice(size=47, spacing=1.0) + 0.3
+    pos_aos = generate_cubic_lattice(size=48, spacing=1.0) + 0.3
     N_ATOMS = pos_aos.shape[0]
     vel_aos = np.random.random((N_ATOMS, 3))
     vel_aos = vel_aos - vel_aos.mean(axis=0)
@@ -1361,7 +1495,7 @@ if __name__ == "__main__":
     dihes = [[0, 1, 2, 3, 1.5, 0.0, 0.0, 0.0]]
     excls = [[0, 1, 0.0, 0.0], [1, 2, 0.0, 0.0], [0, 2, 0.0, 0.0], [2, 3, 0.0, 0.0], [1, 3, 0.0, 0.0], [0, 3, 0.5, 0.5]]
 
-    engine = MDEngine(n_atoms=N_ATOMS, box_size=BOX_SIZE, r_cut=2.5, skin=0.25, dt=0.002, temperature=120)
+    engine = MDEngine(n_atoms=N_ATOMS, box_size=BOX_SIZE, r_cut=2 * 2 ** (1 / 6.), skin=0.3, dt=0.001, temperature=120)
 
     # API OF PAIRWISE FORCE INJECTION
     custom_force_code = """
@@ -1386,8 +1520,6 @@ if __name__ == "__main__":
     engine.load_dihedrals(dihes)
 
     print("Running...")
-    s = time.time()
-    Nstep = 50001
-    engine.run(steps=Nstep, ensemble="LANGEVIN")
-    print(f"Time for {Nstep} steps: {time.time() - s:.4f} seconds tps {Nstep / (time.time() - s):.4f} steps/s")
-    print(f"Avg steps per nl update: {Nstep / engine._num_nl_update}")
+    Nstep = 50000
+    engine.run_batch(steps=Nstep, ensemble="LANGEVIN")
+    print(f"Avg steps per nl update: {Nstep / engine._num_nl_update:.2f}")
