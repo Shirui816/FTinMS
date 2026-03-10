@@ -50,6 +50,44 @@ class MDCodeGenerator:
             return (expandBits(cx)) | (expandBits(cy) << 1) | (expandBits(cz) << 2);
         }
 
+        inline unsigned int get_hilbert_hash(int x, int y, int z) {
+            const int n_bits = 10; //1023
+            uint M = 1 << (n_bits - 1);
+            uint d = 0;
+            
+            x = clamp(x, 0, (1 << n_bits) - 1);
+            y = clamp(y, 0, (1 << n_bits) - 1);
+            z = clamp(z, 0, (1 << n_bits) - 1);
+        
+            for (uint s = M; s > 0; s >>= 1) {
+                uint rx = (x & s) > 0;
+                uint ry = (y & s) > 0;
+                uint rz = (z & s) > 0;
+
+                uint i = (rx ? 7 : 0) ^ (ry ? 3 : 0) ^ (rz ? 1 : 0);
+                d = (d << 3) | i;
+        
+                if (i == 0) {
+                    uint t = x; x = z; z = t;
+                } else if (i == 1 || i == 2) {
+                    uint t = x; x = y; y = t;
+                } else if (i == 3 || i == 4) {
+                    x = s - 1 - x; y = s - 1 - y; z = s - 1 - z;
+                } else if (i == 5 || i == 6) {
+                    uint t = y; y = z; z = t;
+                    x = s - 1 - x; y = s - 1 - y;
+                } else if (i == 7) {
+                    uint t = x; x = s - 1 - z; z = s - 1 - t;
+                }
+            }
+            return d;
+        }
+
+        inline unsigned int get_cell_hash(int cx, int cy, int cz) {
+            return get_hilbert_hash(cx, cy, cz);
+            // return get_morton_hash(cx, cy, cz);
+        }        
+
         inline float apply_pbc(float dx, float box) { return dx - box * rint(dx / box); }
 
         inline uint hash32(uint state) {
@@ -79,7 +117,7 @@ class MDCodeGenerator:
             int cx = clamp((int)(x[i] / box_x * grid_dim_x), 0, grid_dim_x - 1);
             int cy = clamp((int)(y[i] / box_y * grid_dim_y), 0, grid_dim_y - 1);
             int cz = clamp((int)(z[i] / box_z * grid_dim_z), 0, grid_dim_z - 1);
-            cell_hash[i] = get_morton_hash(cx, cy, cz);
+            cell_hash[i] = get_cell_hash(cx, cy, cz);
             indices[i] = i;
         }
 
@@ -136,7 +174,7 @@ class MDCodeGenerator:
                         int nx = (cx + dx % grid_dim_x + grid_dim_x) % grid_dim_x;
                         int ny = (cy + dy % grid_dim_y + grid_dim_y) % grid_dim_y;
                         int nz = (cz + dz % grid_dim_z + grid_dim_z) % grid_dim_z;
-                        int n_cell_id = get_morton_hash(nx, ny, nz);
+                        int n_cell_id = get_cell_hash(nx, ny, nz);
                         int start = cell_start[n_cell_id], end = cell_end[n_cell_id];
                         for (int j = start; j < end; ++j) {
                             if (i == j) continue;
