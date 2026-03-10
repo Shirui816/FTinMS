@@ -84,8 +84,8 @@ class MDCodeGenerator:
         }
 
         inline unsigned int get_cell_hash(int cx, int cy, int cz) {
-            return get_hilbert_hash(cx, cy, cz);
-            // return get_morton_hash(cx, cy, cz);
+            // return get_hilbert_hash(cx, cy, cz);
+            return get_morton_hash(cx, cy, cz);
         }        
 
         inline float apply_pbc(float dx, float box) { return dx - box * rint(dx / box); }
